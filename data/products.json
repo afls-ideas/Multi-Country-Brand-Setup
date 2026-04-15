@@ -1,0 +1,24 @@
+{
+  "description": "Multi-country brand product hierarchy. Edit this file to add brands, countries, or sample dosages, then re-run scripts/create-products.apex.",
+  "brands": [
+    {
+      "name": "Immunexis",
+      "productCode": "IMMUNEXIS",
+      "description": "Immunexis - Global Brand",
+      "samples": [
+        { "dosage": "10mg", "suffix": "SMPL" },
+        { "dosage": "25mg", "suffix": "SMPL" }
+      ]
+    },
+    {
+      "name": "Cordim",
+      "productCode": "CORDIM",
+      "description": "Cordim - Global Brand",
+      "samples": [
+        { "dosage": "5mg", "suffix": "SMPL" },
+        { "dosage": "20mg", "suffix": "SMPL" }
+      ]
+    }
+  ],
+  "countries": ["US", "GB", "FR", "IT", "ES", "DE"]
+}
