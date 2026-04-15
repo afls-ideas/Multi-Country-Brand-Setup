@@ -2,244 +2,208 @@
 
 ## Overview
 
-These Anonymous Apex scripts create the full multi-country product hierarchy in your org. Run them in order using Developer Console or VS Code.
+These Anonymous Apex scripts create the full multi-country product hierarchy and marketable product records in your org. Both scripts are idempotent — safe to re-run without creating duplicates.
 
 ```mermaid
 flowchart LR
-    S1["Script 1<br/><b>Create Brands</b><br/>2 records"] --> S2["Script 2<br/><b>Create Sub-Brands</b><br/>12 records"]
-    S2 --> S3["Script 3<br/><b>Create Samples</b><br/>24 records"]
-    S3 --> S4["Script 4<br/><b>Verify Hierarchy</b>"]
+    S1["Step 1<br/><b>create-products.apex</b><br/>38 Product2 records"] --> S2["Step 2<br/><b>create-marketable-products.apex</b><br/>12 LifeSciMarketableProduct records"]
+    S2 --> S3["Step 3<br/><b>Verify in org</b>"]
 
     style S1 fill:#4a90d9,color:#fff
     style S2 fill:#f5a623,color:#fff
     style S3 fill:#7ed321,color:#fff
-    style S4 fill:#9b59b6,color:#fff
 ```
 
 **Prerequisites:**
-- `Country__c` custom picklist field deployed to `Product2` (see `force-app/` metadata)
-- `Family` picklist values `Brand`, `Sub-Brand`, `Sample` added to `Product2.Family`
+- `Country__c` custom picklist field deployed to `Product2` and `LifeSciMarketableProduct` (see `force-app/` metadata)
+- `ParentProduct__c` custom lookup deployed to `Product2` (see [README-06](README-06-Parent-Child-Approaches.md))
+- `Family` picklist values `Brand`, `Sub-Brand`, `Sample` available on `Product2.Family`
+- `Multi_Country_Brand_Admin` permission set assigned to running user (for FLS on custom fields)
+- Existing `Immunexis` and `Cordim` Brand-type LifeSciMarketableProduct records (these exist in the standard LSC demo data)
 
 ---
 
-## Script 1: Create Brands (Level 1)
+## Step 1: Create Product2 Hierarchy
 
-```apex
-// ============================================================
-// Script 1: Create Top-Level Brand Records
-// ============================================================
+**Script:** `scripts/create-products.apex`
 
-List<Product2> brands = new List<Product2>();
+Creates 38 Product2 records in a three-level hierarchy:
 
-brands.add(new Product2(
-    Name = 'Immunexis',
-    ProductCode = 'IMMUNEXIS',
-    Family = 'Brand',
-    IsActive = true,
-    Description = 'Immunexis - Global Brand'
-));
+| Level | Family | Records | Parent Field |
+|-------|--------|---------|--------------|
+| 1 | Brand | 2 | None |
+| 2 | Sub-Brand | 12 (2 brands x 6 countries) | `ParentProduct__c` → Brand |
+| 3 | Sample | 24 (12 sub-brands x 2 dosages) | `ParentProduct__c` → Sub-Brand |
 
-brands.add(new Product2(
-    Name = 'Cordim',
-    ProductCode = 'CORDIM',
-    Family = 'Brand',
-    IsActive = true,
-    Description = 'Cordim - Global Brand'
-));
-
-insert brands;
-System.debug('Brands created: ' + brands);
+**Run it:**
+```bash
+sf apex run --file scripts/create-products.apex --target-org 260-pm
 ```
 
+**How it works:**
+1. Queries all existing Product2 records by ProductCode (idempotency key)
+2. Inserts new records or updates existing ones
+3. Populates `ParentProduct__c` to link child → parent
+4. Sets `Country__c` on Sub-Brands and Samples
+
+> **Note:** The script uses `ParentProduct__c` (custom lookup) by default. If your org has Product Hierarchy enabled, swap to the lines marked `[STANDARD HIERARCHY]` in the script. See [README-06](README-06-Parent-Child-Approaches.md) for details.
+
 ---
 
-## Script 2: Create Sub-Brands Per Country (Level 2)
+## Step 2: Create LifeSciMarketableProduct Records
 
-```apex
-// ============================================================
-// Script 2: Create Country Sub-Brand Records
-// Run AFTER Script 1
-// ============================================================
+**Script:** `scripts/create-marketable-products.apex`
 
-// Fetch parent brands
-Map<String, Id> brandMap = new Map<String, Id>();
-for (Product2 p : [SELECT Id, Name FROM Product2 WHERE Family = 'Brand' AND Name IN ('Immunexis', 'Cordim')]) {
-    brandMap.put(p.Name, p.Id);
-}
+Creates 12 LifeSciMarketableProduct records — one per brand per country. These make the country-level sub-brands visible across LSC features (territory alignment, call discussions, product priorities, etc.).
 
-List<String> countries = new List<String>{'US', 'GB', 'FR', 'IT', 'ES', 'DE'};
-List<String> brandNames = new List<String>{'Immunexis', 'Cordim'};
+| Brand | Records | Parent Brand (via ParentBrandProductId) |
+|-------|---------|----------------------------------------|
+| Immunexis | 6 (US, GB, FR, IT, ES, DE) | Existing "Immunexis" Brand marketable product |
+| Cordim | 6 (US, GB, FR, IT, ES, DE) | Existing "Cordim" Brand marketable product |
 
-List<Product2> subBrands = new List<Product2>();
+Each record is:
+- Linked to its **Product2 sub-brand** via `ProductId`
+- Parented under the **Brand marketable product** via `ParentBrandProductId`
+- Tagged with `Country__c`
 
-for (String brand : brandNames) {
-    for (String country : countries) {
-        subBrands.add(new Product2(
-            Name = brand + ' ' + country,
-            ProductCode = brand.toUpperCase() + '-' + country,
-            Family = 'Sub-Brand',
-            IsActive = true,
-            ParentId = brandMap.get(brand),
-            Country__c = country,
-            Description = brand + ' - ' + country + ' market variant'
-        ));
-    }
-}
-
-insert subBrands;
-System.debug('Sub-brands created: ' + subBrands.size());
-for (Product2 sb : subBrands) {
-    System.debug(sb.Name + ' (Country: ' + sb.Country__c + ', Parent: ' + sb.ParentId + ')');
-}
+**Run it:**
+```bash
+sf apex run --file scripts/create-marketable-products.apex --target-org 260-pm
 ```
 
----
-
-## Script 3: Create Samples Per Sub-Brand (Level 3)
-
-```apex
-// ============================================================
-// Script 3: Create Sample Records Under Each Sub-Brand
-// Run AFTER Script 2
-// ============================================================
-
-// Fetch sub-brands
-List<Product2> subBrands = [
-    SELECT Id, Name, Country__c, ParentId
-    FROM Product2
-    WHERE Family = 'Sub-Brand'
-    AND Country__c IN ('US', 'GB', 'FR', 'IT', 'ES', 'DE')
-    AND Parent.Name IN ('Immunexis', 'Cordim')
-];
-
-// Define sample dosages per brand
-Map<String, List<String>> sampleDosages = new Map<String, List<String>>{
-    'Immunexis' => new List<String>{'10mg', '25mg'},
-    'Cordim' => new List<String>{'5mg', '20mg'}
-};
-
-List<Product2> samples = new List<Product2>();
-
-for (Product2 sb : subBrands) {
-    // Determine brand name from sub-brand name (e.g., "Immunexis US" → "Immunexis")
-    String brandName = sb.Name.substringBefore(' ');
-    List<String> dosages = sampleDosages.get(brandName);
-
-    if (dosages != null) {
-        for (String dosage : dosages) {
-            samples.add(new Product2(
-                Name = sb.Name + ' ' + dosage + ' Sample',
-                ProductCode = brandName.toUpperCase() + '-' + sb.Country__c + '-' + dosage + '-SMPL',
-                Family = 'Sample',
-                IsActive = true,
-                ParentId = sb.Id,
-                Country__c = sb.Country__c,
-                Description = brandName + ' ' + dosage + ' sample for ' + sb.Country__c + ' market'
-            ));
-        }
-    }
-}
-
-insert samples;
-System.debug('Samples created: ' + samples.size());
-for (Product2 s : samples) {
-    System.debug(s.Name + ' (Code: ' + s.ProductCode + ')');
-}
-```
-
----
-
-## Script 4: Verify Hierarchy
-
-```apex
-// ============================================================
-// Script 4: Verify the complete product hierarchy
-// ============================================================
-
-System.debug('=== BRAND LEVEL ===');
-for (Product2 brand : [SELECT Id, Name, ProductCode, Family FROM Product2 WHERE Family = 'Brand' ORDER BY Name]) {
-    System.debug('BRAND: ' + brand.Name + ' (' + brand.ProductCode + ')');
-
-    System.debug('  === SUB-BRANDS ===');
-    for (Product2 sub : [SELECT Id, Name, ProductCode, Country__c FROM Product2 WHERE ParentId = :brand.Id AND Family = 'Sub-Brand' ORDER BY Country__c]) {
-        System.debug('  SUB-BRAND: ' + sub.Name + ' [' + sub.Country__c + '] (' + sub.ProductCode + ')');
-
-        for (Product2 sample : [SELECT Id, Name, ProductCode, Country__c FROM Product2 WHERE ParentId = :sub.Id AND Family = 'Sample' ORDER BY Name]) {
-            System.debug('    SAMPLE: ' + sample.Name + ' [' + sample.Country__c + '] (' + sample.ProductCode + ')');
-        }
-    }
-}
-```
-
----
-
-## Expected Output After All Scripts
+**How it works:**
+1. Looks up existing Brand-type LifeSciMarketableProduct records for Immunexis and Cordim
+2. Looks up Product2 sub-brand records (Family = Sub-Brand)
+3. Queries existing LifeSciMarketableProduct records by ProductCode (idempotency key)
+4. Inserts new records or updates existing ones
 
 ```mermaid
 graph TD
-    COR["<b>Cordim</b><br/>CORDIM"]
-    COR_DE["Cordim DE<br/>CORDIM-DE"]
-    COR_ES["Cordim ES<br/>CORDIM-ES"]
-    COR_FR["Cordim FR<br/>CORDIM-FR"]
-    COR_GB["Cordim GB<br/>CORDIM-GB"]
-    COR_IT["Cordim IT<br/>CORDIM-IT"]
-    COR_US["Cordim US<br/>CORDIM-US"]
+    subgraph "LifeSciMarketableProduct"
+        B1["Immunexis<br/><i>Type: Brand</i>"]
+        B2["Cordim<br/><i>Type: Brand</i>"]
 
-    COR_DE_5["5mg Sample<br/>CORDIM-DE-5mg-SMPL"]
-    COR_DE_20["20mg Sample<br/>CORDIM-DE-20mg-SMPL"]
+        B1 --> M1["Immunexis US<br/><i>Type: Product</i>"]
+        B1 --> M2["Immunexis GB<br/><i>Type: Product</i>"]
+        B1 --> M3["Immunexis FR<br/><i>Type: Product</i>"]
+        B1 --> M4["...IT, ES, DE"]
 
-    COR --> COR_DE & COR_ES & COR_FR & COR_GB & COR_IT & COR_US
-    COR_DE --> COR_DE_5 & COR_DE_20
+        B2 --> M5["Cordim US<br/><i>Type: Product</i>"]
+        B2 --> M6["Cordim GB<br/><i>Type: Product</i>"]
+        B2 --> M7["Cordim FR<br/><i>Type: Product</i>"]
+        B2 --> M8["...IT, ES, DE"]
+    end
 
-    IMM["<b>Immunexis</b><br/>IMMUNEXIS"]
-    IMM_DE["Immunexis DE<br/>IMMUNEXIS-DE"]
-    IMM_ES["Immunexis ES<br/>IMMUNEXIS-ES"]
-    IMM_FR["Immunexis FR<br/>IMMUNEXIS-FR"]
-    IMM_GB["Immunexis GB<br/>IMMUNEXIS-GB"]
-    IMM_IT["Immunexis IT<br/>IMMUNEXIS-IT"]
-    IMM_US["Immunexis US<br/>IMMUNEXIS-US"]
+    subgraph "Product2"
+        P1["Immunexis US<br/><i>Family: Sub-Brand</i>"]
+        P2["Cordim US<br/><i>Family: Sub-Brand</i>"]
+    end
 
-    IMM_DE_10["10mg Sample<br/>IMMUNEXIS-DE-10mg-SMPL"]
-    IMM_DE_25["25mg Sample<br/>IMMUNEXIS-DE-25mg-SMPL"]
+    M1 -.->|ProductId| P1
+    M5 -.->|ProductId| P2
 
-    IMM --> IMM_DE & IMM_ES & IMM_FR & IMM_GB & IMM_IT & IMM_US
-    IMM_DE --> IMM_DE_10 & IMM_DE_25
-
-    style COR fill:#4a90d9,color:#fff
-    style IMM fill:#4a90d9,color:#fff
-    style COR_DE fill:#f5a623,color:#fff
-    style COR_ES fill:#f5a623,color:#fff
-    style COR_FR fill:#f5a623,color:#fff
-    style COR_GB fill:#f5a623,color:#fff
-    style COR_IT fill:#f5a623,color:#fff
-    style COR_US fill:#f5a623,color:#fff
-    style IMM_DE fill:#f5a623,color:#fff
-    style IMM_ES fill:#f5a623,color:#fff
-    style IMM_FR fill:#f5a623,color:#fff
-    style IMM_GB fill:#f5a623,color:#fff
-    style IMM_IT fill:#f5a623,color:#fff
-    style IMM_US fill:#f5a623,color:#fff
-    style COR_DE_5 fill:#7ed321,color:#fff
-    style COR_DE_20 fill:#7ed321,color:#fff
-    style IMM_DE_10 fill:#7ed321,color:#fff
-    style IMM_DE_25 fill:#7ed321,color:#fff
+    style B1 fill:#4a90d9,color:#fff
+    style B2 fill:#4a90d9,color:#fff
+    style M1 fill:#f5a623,color:#fff
+    style M2 fill:#f5a623,color:#fff
+    style M3 fill:#f5a623,color:#fff
+    style M4 fill:#f5a623,color:#fff
+    style M5 fill:#f5a623,color:#fff
+    style M6 fill:#f5a623,color:#fff
+    style M7 fill:#f5a623,color:#fff
+    style M8 fill:#f5a623,color:#fff
+    style P1 fill:#7ed321,color:#fff
+    style P2 fill:#7ed321,color:#fff
 ```
-
-> Samples shown for DE only — each of the 12 sub-brands has 2 samples (24 total).
 
 ---
 
-## Cleanup Script (If Needed)
+## Why Both Objects?
 
-```apex
-// WARNING: Deletes ALL product records created by these scripts
-// Delete in reverse order: Samples → Sub-Brands → Brands
+| Object | Role | Without It |
+|--------|------|------------|
+| **Product2** | Master product catalog — defines brands, dosages, hierarchy | No products exist |
+| **LifeSciMarketableProduct** | Makes products available in LSC features — territory alignment, call discussions, priorities, sampling | Products exist but are invisible to reps and LSC workflows |
 
-delete [SELECT Id FROM Product2 WHERE Family = 'Sample' AND (Parent.Parent.Name = 'Immunexis' OR Parent.Parent.Name = 'Cordim')];
-delete [SELECT Id FROM Product2 WHERE Family = 'Sub-Brand' AND (Parent.Name = 'Immunexis' OR Parent.Name = 'Cordim')];
-delete [SELECT Id FROM Product2 WHERE Family = 'Brand' AND Name IN ('Immunexis', 'Cordim')];
-System.debug('All product records deleted.');
+Think of Product2 as the **definition** and LifeSciMarketableProduct as the **activation** for LSC.
+
+---
+
+## Expected Output After Both Scripts
+
+```mermaid
+graph TD
+    subgraph "Product2 (38 records)"
+        IMM["<b>Immunexis</b><br/>Brand"]
+        IMM_US["Immunexis US<br/>Sub-Brand"]
+        IMM_US_10["10mg Sample"]
+        IMM_US_25["25mg Sample"]
+        IMM --> IMM_US
+        IMM_US --> IMM_US_10
+        IMM_US --> IMM_US_25
+        IMM --> IMM_ETC["...GB, FR, IT, ES, DE<br/>(each with 2 samples)"]
+
+        COR["<b>Cordim</b><br/>Brand"]
+        COR_US["Cordim US<br/>Sub-Brand"]
+        COR_US_5["5mg Sample"]
+        COR_US_20["20mg Sample"]
+        COR --> COR_US
+        COR_US --> COR_US_5
+        COR_US --> COR_US_20
+        COR --> COR_ETC["...GB, FR, IT, ES, DE<br/>(each with 2 samples)"]
+    end
+
+    subgraph "LifeSciMarketableProduct (12 new records)"
+        MKIMM["Immunexis<br/>Brand (existing)"]
+        MKIMM_US["Immunexis US"]
+        MKIMM_GB["Immunexis GB"]
+        MKIMM_ETC["...FR, IT, ES, DE"]
+        MKIMM --> MKIMM_US & MKIMM_GB & MKIMM_ETC
+
+        MKCOR["Cordim<br/>Brand (existing)"]
+        MKCOR_US["Cordim US"]
+        MKCOR_GB["Cordim GB"]
+        MKCOR_ETC["...FR, IT, ES, DE"]
+        MKCOR --> MKCOR_US & MKCOR_GB & MKCOR_ETC
+    end
+
+    MKIMM_US -.->|ProductId| IMM_US
+    MKCOR_US -.->|ProductId| COR_US
+
+    style IMM fill:#4a90d9,color:#fff
+    style COR fill:#4a90d9,color:#fff
+    style MKIMM fill:#4a90d9,color:#fff
+    style MKCOR fill:#4a90d9,color:#fff
 ```
+
+> **Record counts:** 38 Product2 (2 brands + 12 sub-brands + 24 samples) + 12 new LifeSciMarketableProduct = **50 total records created**
+
+---
+
+## Cleanup Scripts
+
+### Delete Product2 Records
+```bash
+sf apex run --file scripts/delete-products.apex --target-org 260-pm
+```
+
+Deletes in reverse hierarchy order: Samples → Sub-Brands → Brands.
+
+### Delete LifeSciMarketableProduct Records
+```apex
+// Delete country-level marketable products (not the Brand-level parents)
+delete [
+    SELECT Id FROM LifeSciMarketableProduct
+    WHERE ProductCode LIKE 'IMMUNEXIS-%' OR ProductCode LIKE 'CORDIM-%'
+];
+System.debug('Country marketable products deleted.');
+```
+
+---
+
+## Data Source
+
+All brand definitions, countries, and dosages are stored in `data/products.json`. Edit that file to add brands, countries, or dosages, then update the scripts to match.
 
 ---
 
@@ -248,3 +212,5 @@ System.debug('All product records deleted.');
 - [README-01: Product Hierarchy Architecture](README-01-Product-Hierarchy.md)
 - [README-02: LSC Areas Where Products Appear](README-02-LSC-Product-Areas.md)
 - [README-03: Country Field Requirements Per Object](README-03-Country-Field-Requirements.md)
+- [README-05: Country Global Value Set](README-05-Country-Global-Value-Set.md)
+- [README-06: Parent-Child Approaches](README-06-Parent-Child-Approaches.md)
