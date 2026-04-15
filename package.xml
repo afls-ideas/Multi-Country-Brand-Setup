@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Package xmlns="http://soap.sforce.com/2006/04/metadata">
     <types>
+        <members>Country</members>
+        <name>GlobalValueSet</name>
+    </types>
+    <types>
         <members>Product2.Country__c</members>
         <members>LifeSciMarketableProduct.Country__c</members>
         <members>ProductGuidance.Country__c</members>

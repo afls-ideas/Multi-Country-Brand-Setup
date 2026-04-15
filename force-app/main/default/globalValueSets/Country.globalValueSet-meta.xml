@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<GlobalValueSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <masterLabel>Country</masterLabel>
+    <description>Global country codes for multi-country brand hierarchy. Used across Product2, marketable products, product guidance, sample management, and call discussion objects.</description>
+    <sorted>false</sorted>
+    <customValue>
+        <fullName>US</fullName>
+        <default>false</default>
+        <label>US</label>
+    </customValue>
+    <customValue>
+        <fullName>GB</fullName>
+        <default>false</default>
+        <label>GB</label>
+    </customValue>
+    <customValue>
+        <fullName>FR</fullName>
+        <default>false</default>
+        <label>FR</label>
+    </customValue>
+    <customValue>
+        <fullName>IT</fullName>
+        <default>false</default>
+        <label>IT</label>
+    </customValue>
+    <customValue>
+        <fullName>ES</fullName>
+        <default>false</default>
+        <label>ES</label>
+    </customValue>
+    <customValue>
+        <fullName>DE</fullName>
+        <default>false</default>
+        <label>DE</label>
+    </customValue>
+</GlobalValueSet>
