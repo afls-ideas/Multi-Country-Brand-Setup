@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<CustomField xmlns="http://soap.sforce.com/2006/04/metadata">
+    <fullName>Country__c</fullName>
+    <label>Country</label>
+    <description>Identifies the country/market for this sample transaction. Enables country-level compliance reporting (PDMA for US, EU-specific rules for European markets).</description>
+    <inlineHelpText>Country for this sample transaction. Should match the related Product2 country.</inlineHelpText>
+    <type>Picklist</type>
+    <required>false</required>
+    <trackHistory>false</trackHistory>
+    <valueSet>
+        <restricted>true</restricted>
+        <valueSetDefinition>
+            <sorted>false</sorted>
+            <value>
+                <fullName>US</fullName>
+                <default>false</default>
+                <label>US</label>
+            </value>
+            <value>
+                <fullName>GB</fullName>
+                <default>false</default>
+                <label>GB</label>
+            </value>
+            <value>
+                <fullName>FR</fullName>
+                <default>false</default>
+                <label>FR</label>
+            </value>
+            <value>
+                <fullName>IT</fullName>
+                <default>false</default>
+                <label>IT</label>
+            </value>
+            <value>
+                <fullName>ES</fullName>
+                <default>false</default>
+                <label>ES</label>
+            </value>
+            <value>
+                <fullName>DE</fullName>
+                <default>false</default>
+                <label>DE</label>
+            </value>
+        </valueSetDefinition>
+    </valueSet>
+</CustomField>

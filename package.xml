@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<Package xmlns="http://soap.sforce.com/2006/04/metadata">
+    <types>
+        <members>Product2.Country__c</members>
+        <members>LifeSciMarketableProduct.Country__c</members>
+        <members>ProductGuidance.Country__c</members>
+        <members>LifeSciTerritoryProductPriority.Country__c</members>
+        <members>LifeSciProductAccountRestriction.Country__c</members>
+        <members>TerritoryProductQtyAllocation.Country__c</members>
+        <members>SampleTransaction.Country__c</members>
+        <members>SampleLot.Country__c</members>
+        <members>SampleInventory.Country__c</members>
+        <members>LifeSciCallDiscussion.Country__c</members>
+        <name>CustomField</name>
+    </types>
+    <version>65.0</version>
+</Package>
