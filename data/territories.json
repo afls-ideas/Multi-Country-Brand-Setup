@@ -1,0 +1,69 @@
+{
+  "description": "Multi-country territory hierarchy. Edit this file to add countries or cities, then re-run scripts/create-territories.apex.",
+  "globalTerritory": {
+    "name": "GLOBAL",
+    "developerName": "GLOBAL"
+  },
+  "countries": [
+    {
+      "code": "US",
+      "name": "US-COUNTRY",
+      "developerName": "US_COUNTRY",
+      "cities": [
+        { "seq": "001", "city": "New York", "developerSuffix": "NewYork" },
+        { "seq": "002", "city": "Los Angeles", "developerSuffix": "LosAngeles" },
+        { "seq": "003", "city": "Chicago", "developerSuffix": "Chicago" }
+      ]
+    },
+    {
+      "code": "GB",
+      "name": "GB-COUNTRY",
+      "developerName": "GB_COUNTRY",
+      "cities": [
+        { "seq": "001", "city": "London", "developerSuffix": "London" },
+        { "seq": "002", "city": "Manchester", "developerSuffix": "Manchester" },
+        { "seq": "003", "city": "Birmingham", "developerSuffix": "Birmingham" }
+      ]
+    },
+    {
+      "code": "FR",
+      "name": "FR-COUNTRY",
+      "developerName": "FR_COUNTRY",
+      "cities": [
+        { "seq": "001", "city": "Paris", "developerSuffix": "Paris" },
+        { "seq": "002", "city": "Lyon", "developerSuffix": "Lyon" },
+        { "seq": "003", "city": "Marseille", "developerSuffix": "Marseille" }
+      ]
+    },
+    {
+      "code": "IT",
+      "name": "IT-COUNTRY",
+      "developerName": "IT_COUNTRY",
+      "cities": [
+        { "seq": "001", "city": "Rome", "developerSuffix": "Rome" },
+        { "seq": "002", "city": "Milan", "developerSuffix": "Milan" },
+        { "seq": "003", "city": "Naples", "developerSuffix": "Naples" }
+      ]
+    },
+    {
+      "code": "ES",
+      "name": "ES-COUNTRY",
+      "developerName": "ES_COUNTRY",
+      "cities": [
+        { "seq": "001", "city": "Madrid", "developerSuffix": "Madrid" },
+        { "seq": "002", "city": "Barcelona", "developerSuffix": "Barcelona" },
+        { "seq": "003", "city": "Valencia", "developerSuffix": "Valencia" }
+      ]
+    },
+    {
+      "code": "DE",
+      "name": "DE-COUNTRY",
+      "developerName": "DE_COUNTRY",
+      "cities": [
+        { "seq": "001", "city": "Berlin", "developerSuffix": "Berlin" },
+        { "seq": "002", "city": "Munich", "developerSuffix": "Munich" },
+        { "seq": "003", "city": "Frankfurt", "developerSuffix": "Frankfurt" }
+      ]
+    }
+  ]
+}
