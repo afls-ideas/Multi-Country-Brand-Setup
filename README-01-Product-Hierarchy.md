@@ -6,31 +6,75 @@ This project sets up a **multi-country pharmaceutical brand hierarchy** in Life 
 
 ## Product2 Hierarchy (3 Levels)
 
-```
-Level 1: BRAND (Top-Level Product2)
-│
-├── Immunexis                    (Family = "Brand", IsActive = true)
-│   ├── Level 2: SUB-BRAND / COUNTRY VARIANT (Child Product2, ParentId → Brand)
-│   │   ├── Immunexis US         (Country__c = "US", Family = "Sub-Brand")
-│   │   ├── Immunexis GB         (Country__c = "GB", Family = "Sub-Brand")
-│   │   ├── Immunexis FR         (Country__c = "FR", Family = "Sub-Brand")
-│   │   ├── Immunexis IT         (Country__c = "IT", Family = "Sub-Brand")
-│   │   ├── Immunexis ES         (Country__c = "ES", Family = "Sub-Brand")
-│   │   └── Immunexis DE         (Country__c = "DE", Family = "Sub-Brand")
-│   │       │
-│   │       └── Level 3: SAMPLE (Child Product2, ParentId → Sub-Brand)
-│   │           ├── Immunexis DE 10mg Sample   (Family = "Sample")
-│   │           └── Immunexis DE 25mg Sample   (Family = "Sample")
-│
-└── Cordim                       (Family = "Brand", IsActive = true)
-    ├── Cordim US                (Country__c = "US", Family = "Sub-Brand")
-    ├── Cordim GB                (Country__c = "GB", Family = "Sub-Brand")
-    ├── Cordim FR                (Country__c = "FR", Family = "Sub-Brand")
-    ├── Cordim IT                (Country__c = "IT", Family = "Sub-Brand")
-    ├── Cordim ES                (Country__c = "ES", Family = "Sub-Brand")
-    └── Cordim DE                (Country__c = "DE", Family = "Sub-Brand")
-        ├── Cordim DE 5mg Sample
-        └── Cordim DE 20mg Sample
+```mermaid
+graph TD
+    subgraph "Level 1: BRAND"
+        IMM["<b>Immunexis</b><br/>Family = Brand"]
+        COR["<b>Cordim</b><br/>Family = Brand"]
+    end
+
+    subgraph "Level 2: SUB-BRAND (Immunexis)"
+        IMM_US["Immunexis US<br/>Country = US"]
+        IMM_GB["Immunexis GB<br/>Country = GB"]
+        IMM_FR["Immunexis FR<br/>Country = FR"]
+        IMM_IT["Immunexis IT<br/>Country = IT"]
+        IMM_ES["Immunexis ES<br/>Country = ES"]
+        IMM_DE["Immunexis DE<br/>Country = DE"]
+    end
+
+    subgraph "Level 2: SUB-BRAND (Cordim)"
+        COR_US["Cordim US<br/>Country = US"]
+        COR_GB["Cordim GB<br/>Country = GB"]
+        COR_FR["Cordim FR<br/>Country = FR"]
+        COR_IT["Cordim IT<br/>Country = IT"]
+        COR_ES["Cordim ES<br/>Country = ES"]
+        COR_DE["Cordim DE<br/>Country = DE"]
+    end
+
+    subgraph "Level 3: SAMPLES (examples)"
+        IMM_DE_10["Immunexis DE 10mg Sample"]
+        IMM_DE_25["Immunexis DE 25mg Sample"]
+        COR_DE_5["Cordim DE 5mg Sample"]
+        COR_DE_20["Cordim DE 20mg Sample"]
+    end
+
+    IMM -->|ParentId| IMM_US
+    IMM -->|ParentId| IMM_GB
+    IMM -->|ParentId| IMM_FR
+    IMM -->|ParentId| IMM_IT
+    IMM -->|ParentId| IMM_ES
+    IMM -->|ParentId| IMM_DE
+
+    COR -->|ParentId| COR_US
+    COR -->|ParentId| COR_GB
+    COR -->|ParentId| COR_FR
+    COR -->|ParentId| COR_IT
+    COR -->|ParentId| COR_ES
+    COR -->|ParentId| COR_DE
+
+    IMM_DE -->|ParentId| IMM_DE_10
+    IMM_DE -->|ParentId| IMM_DE_25
+    COR_DE -->|ParentId| COR_DE_5
+    COR_DE -->|ParentId| COR_DE_20
+
+    style IMM fill:#4a90d9,color:#fff
+    style COR fill:#4a90d9,color:#fff
+    style IMM_US fill:#f5a623,color:#fff
+    style IMM_GB fill:#f5a623,color:#fff
+    style IMM_FR fill:#f5a623,color:#fff
+    style IMM_IT fill:#f5a623,color:#fff
+    style IMM_ES fill:#f5a623,color:#fff
+    style IMM_DE fill:#f5a623,color:#fff
+    style COR_US fill:#f5a623,color:#fff
+    style COR_GB fill:#f5a623,color:#fff
+    style COR_FR fill:#f5a623,color:#fff
+    style COR_IT fill:#f5a623,color:#fff
+    style COR_ES fill:#f5a623,color:#fff
+    style COR_DE fill:#f5a623,color:#fff
+    style IMM_DE_10 fill:#7ed321,color:#fff
+    style IMM_DE_25 fill:#7ed321,color:#fff
+    style COR_DE_5 fill:#7ed321,color:#fff
+    style COR_DE_20 fill:#7ed321,color:#fff
 ```
 
 ## Key Design Decisions

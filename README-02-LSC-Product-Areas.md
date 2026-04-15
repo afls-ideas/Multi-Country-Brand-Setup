@@ -4,6 +4,38 @@
 
 Every LSC module below references products. In a multi-country setup, the **sub-brand** (country variant) is the primary product record used — NOT the top-level brand. This is critical: content, messages, priorities, restrictions, and samples all attach to the **sub-brand level**.
 
+```mermaid
+graph LR
+    P2["<b>Product2</b><br/>(Sub-Brand)"]
+
+    P2 --> MP["LifeSciMarketableProduct<br/>Territory assignment"]
+    P2 --> PG["ProductGuidance<br/>Product messages"]
+    P2 --> TPP["LifeSciTerritoryProductPriority<br/>Priority ranking"]
+    P2 --> PAR["LifeSciProductAccountRestriction<br/>Account restrictions"]
+    P2 --> CD["LifeSciCallDiscussion<br/>Call detailing"]
+    P2 --> CLM["ContentDocumentLink<br/>CLM content"]
+    P2 --> TPA["TerritoryProductQtyAllocation<br/>Sample allocation"]
+    P2 --> ST["SampleTransaction<br/>Sample drops"]
+    P2 --> SL["SampleLot<br/>Lot tracking"]
+    P2 --> SI["SampleInventory<br/>Rep inventory"]
+    P2 --> PST["ProductSpecificationType<br/>Specifications"]
+
+    style P2 fill:#4a90d9,color:#fff,stroke-width:3px
+    style MP fill:#f5a623,color:#fff
+    style PG fill:#f5a623,color:#fff
+    style TPP fill:#f5a623,color:#fff
+    style PAR fill:#f5a623,color:#fff
+    style CD fill:#f5a623,color:#fff
+    style CLM fill:#f5a623,color:#fff
+    style TPA fill:#7ed321,color:#fff
+    style ST fill:#7ed321,color:#fff
+    style SL fill:#7ed321,color:#fff
+    style SI fill:#7ed321,color:#fff
+    style PST fill:#9b59b6,color:#fff
+```
+
+> **Orange** = Detailing & Territory objects | **Green** = Sample Management objects | **Purple** = Specifications
+
 ---
 
 ### 1. Product Catalog (Product2)
@@ -74,7 +106,23 @@ Every LSC module below references products. In a multi-country setup, the **sub-
 | `SampleInventory` | Lookup to Product2 | Rep's current inventory count |
 | `ReceivedSampleTransaction` | Lookup to Product2 | Inbound sample receipts |
 
-**What it does:** Tracks the full sample lifecycle — allocation → inventory → distribution → reconciliation.
+**What it does:** Tracks the full sample lifecycle:
+
+```mermaid
+flowchart LR
+    A["TerritoryProductQtyAllocation<br/>Allocation"] --> B["SampleInventory<br/>Rep Inventory"]
+    B --> C["SampleTransaction<br/>Sample Drop"]
+    D["SampleLot<br/>Lot/Batch"] --> B
+    E["ReceivedSampleTransaction<br/>Receipt"] --> B
+    B --> F["Reconciliation"]
+
+    style A fill:#7ed321,color:#fff
+    style B fill:#7ed321,color:#fff
+    style C fill:#7ed321,color:#fff
+    style D fill:#7ed321,color:#fff
+    style E fill:#7ed321,color:#fff
+    style F fill:#7ed321,color:#fff
+```
 
 **Multi-country impact:** Sample regulations differ dramatically by country:
 - **US:** PDMA compliance, state license verification, DEA requirements

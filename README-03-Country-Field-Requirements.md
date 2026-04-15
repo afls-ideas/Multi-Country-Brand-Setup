@@ -75,22 +75,28 @@ These objects may or may not need Country__c depending on your implementation.
 
 ## Population Strategy
 
-### Option A: Manual / Data Loader (Recommended for Initial Load)
-Set `Country__c` during data creation. The Apex scripts in README-04 handle this.
+```mermaid
+flowchart TD
+    START["New Record Created"] --> DECIDE{"Population Method?"}
 
-### Option B: Flow / Trigger (Recommended for Ongoing)
-Create a before-insert Flow or trigger on each object that:
-1. Looks up the related Product2 record
-2. Copies `Product2.Country__c` into the new record's `Country__c`
-3. Validates that the country matches the user's territory assignment
+    DECIDE -->|"Initial Load"| A["<b>Option A: Manual / Data Loader</b><br/>Set Country__c during creation<br/>Apex scripts in README-04"]
+    DECIDE -->|"Ongoing Operations"| B["<b>Option B: Flow / Trigger</b><br/>Before-insert automation"]
+    DECIDE -->|"Low Maintenance"| C["<b>Option C: Formula Field</b><br/>Product__r.Country__c"]
 
-### Option C: Formula Field (Alternative)
-Instead of a stored picklist, use a formula field:
+    B --> B1["1. Look up related Product2"]
+    B1 --> B2["2. Copy Product2.Country__c"]
+    B2 --> B3["3. Validate vs territory assignment"]
+
+    C --> PROS["Always in sync, no logic needed"]
+    C --> CONS["Cannot use in sharing rules,<br/>slower in reports, no mobile list view filters"]
+
+    style START fill:#4a90d9,color:#fff
+    style A fill:#7ed321,color:#fff
+    style B fill:#7ed321,color:#fff
+    style C fill:#f5a623,color:#fff
+    style PROS fill:#e8f5e9,stroke:#7ed321
+    style CONS fill:#fde8e8,stroke:#e74c3c
 ```
-Product__r.Country__c
-```
-**Pros:** Always in sync, no population logic needed.
-**Cons:** Cannot use in sharing rules, slower in reports with large data, cannot be used in list view filters on mobile.
 
 **Recommendation:** Use a stored picklist (Option A/B) for flexibility and performance.
 
@@ -98,17 +104,30 @@ Product__r.Country__c
 
 ## Deployment Order
 
-```
-1. Product2.Country__c                          ← Deploy first (all others depend on this)
-2. LifeSciMarketableProduct.Country__c
-3. ProductGuidance.Country__c
-4. LifeSciTerritoryProductPriority.Country__c
-5. LifeSciProductAccountRestriction.Country__c
-6. TerritoryProductQtyAllocation.Country__c
-7. SampleTransaction.Country__c
-8. SampleLot.Country__c
-9. SampleInventory.Country__c
-10. LifeSciCallDiscussion.Country__c
+```mermaid
+flowchart TD
+    P2["1. Product2.Country__c"] --> T1
+
+    subgraph T1["Tier 1: Essential"]
+        MP["2. LifeSciMarketableProduct"]
+        PG["3. ProductGuidance"]
+        TPP["4. LifeSciTerritoryProductPriority"]
+    end
+
+    T1 --> T2
+
+    subgraph T2["Tier 2: Important"]
+        PAR["5. LifeSciProductAccountRestriction"]
+        TPA["6. TerritoryProductQtyAllocation"]
+        ST["7. SampleTransaction"]
+        SL["8. SampleLot"]
+        SI["9. SampleInventory"]
+        CD["10. LifeSciCallDiscussion"]
+    end
+
+    style P2 fill:#e74c3c,color:#fff,stroke-width:3px
+    style T1 fill:#fff3e0,stroke:#f5a623
+    style T2 fill:#e8f5e9,stroke:#7ed321
 ```
 
 ---
@@ -117,10 +136,8 @@ Product__r.Country__c
 
 All custom field metadata is in:
 ```
-260-pm/force-app/main/default/objects/<ObjectName>/fields/Country__c.field-meta.xml
+force-app/main/default/objects/<ObjectName>/fields/Country__c.field-meta.xml
 ```
-
-See the `260-pm` project for deployable metadata.
 
 ---
 
