@@ -14,16 +14,19 @@
 
 ## Country__c Field Specification
 
-All `Country__c` fields use the same definition for consistency:
+All `Country__c` fields use the same definition for consistency, backed by a **Global Value Set** (`Country`):
 
 | Property | Value |
 |---|---|
 | **API Name** | `Country__c` |
-| **Type** | Picklist |
+| **Type** | Picklist (Global Value Set) |
+| **Global Value Set** | `Country` |
 | **Values** | `US`, `GB`, `FR`, `IT`, `ES`, `DE` |
 | **Required** | No (blank for global/brand-level records) |
 | **Description** | Identifies the country/market this record belongs to |
 | **Default** | None |
+
+> To add a new country, edit only `force-app/main/default/globalValueSets/Country.globalValueSet-meta.xml` — all 10 fields inherit the change.
 
 ---
 
@@ -33,25 +36,27 @@ All `Country__c` fields use the same definition for consistency:
 
 These objects are core to the multi-country product setup and MUST have Country__c.
 
-| # | Object API Name | Why Country__c Is Needed | Populating Strategy |
-|---|---|---|---|
-| 1 | `Product2` | Identifies which country a sub-brand or sample belongs to | Set during record creation; inherited from hierarchy |
-| 2 | `LifeSciMarketableProduct` | Filter marketable products by country; validate territory alignment | Copy from related Product2.Country__c |
-| 3 | `ProductGuidance` | Country-specific product messages; admin filtering | Copy from related Product2.Country__c |
-| 4 | `LifeSciTerritoryProductPriority` | Manage priorities by country; prevent cross-country misalignment | Copy from related Product2.Country__c |
+| # | Object API Name | Why Country__c Is Needed | Populating Strategy | Deployed to 260-pm |
+|---|---|---|---|---|
+| 1 | `Product2` | Identifies which country a sub-brand or sample belongs to | Set during record creation; inherited from hierarchy | YES |
+| 2 | `LifeSciMarketableProduct` | Filter marketable products by country; validate territory alignment | Copy from related Product2.Country__c | YES |
+| 3 | `ProductGuidance` | Country-specific product messages; admin filtering | Copy from related Product2.Country__c | YES |
+| 4 | `LifeSciTerritoryProductPriority` | Manage priorities by country; prevent cross-country misalignment | Copy from related Product2.Country__c | NO — object not provisioned |
 
 ### Tier 2: Important (Deploy Second)
 
 These objects benefit significantly from direct country filtering.
 
-| # | Object API Name | Why Country__c Is Needed | Populating Strategy |
-|---|---|---|---|
-| 5 | `LifeSciProductAccountRestriction` | Country-specific formulary/compliance restrictions | Copy from related Product2.Country__c |
-| 6 | `TerritoryProductQtyAllocation` | Country-specific sample allocation quantities | Copy from related Product2.Country__c |
-| 7 | `SampleTransaction` | Compliance reporting by country (PDMA vs EU rules) | Copy from related Product2.Country__c |
-| 8 | `SampleLot` | Country-specific lot tracking and expiry management | Copy from related Product2.Country__c |
-| 9 | `SampleInventory` | Country-level inventory reporting | Copy from related Product2.Country__c |
-| 10 | `LifeSciCallDiscussion` | Multi-country call analytics and reporting | Copy from related Product2.Country__c |
+| # | Object API Name | Why Country__c Is Needed | Populating Strategy | Deployed to 260-pm |
+|---|---|---|---|---|
+| 5 | `LifeSciProductAccountRestriction` | Country-specific formulary/compliance restrictions | Copy from related Product2.Country__c | NO — object not provisioned |
+| 6 | `TerritoryProductQtyAllocation` | Country-specific sample allocation quantities | Copy from related Product2.Country__c | NO — object not provisioned |
+| 7 | `SampleTransaction` | Compliance reporting by country (PDMA vs EU rules) | Copy from related Product2.Country__c | NO — object not provisioned |
+| 8 | `SampleLot` | Country-specific lot tracking and expiry management | Copy from related Product2.Country__c | NO — object not provisioned |
+| 9 | `SampleInventory` | Country-level inventory reporting | Copy from related Product2.Country__c | NO — object not provisioned |
+| 10 | `LifeSciCallDiscussion` | Multi-country call analytics and reporting | Copy from related Product2.Country__c | NO — object not provisioned |
+
+> **Note (2026-04-15):** 7 of 10 objects are not yet provisioned in the 260-pm org. They require LSC feature licenses for Sample Management, Territory Management, and Call Discussion to be enabled. The Country GVS and 3 fields (Product2, LifeSciMarketableProduct, ProductGuidance) deployed successfully.
 
 ### Tier 3: Optional (Deploy If Needed)
 
@@ -106,28 +111,34 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    P2["1. Product2.Country__c"] --> T1
+    GVS["0. Country GlobalValueSet ✅"] --> P2
+
+    P2["1. Product2.Country__c ✅"] --> T1
 
     subgraph T1["Tier 1: Essential"]
-        MP["2. LifeSciMarketableProduct"]
-        PG["3. ProductGuidance"]
-        TPP["4. LifeSciTerritoryProductPriority"]
+        MP["2. LifeSciMarketableProduct ✅"]
+        PG["3. ProductGuidance ✅"]
+        TPP["4. LifeSciTerritoryProductPriority ⛔"]
     end
 
     T1 --> T2
 
-    subgraph T2["Tier 2: Important"]
-        PAR["5. LifeSciProductAccountRestriction"]
-        TPA["6. TerritoryProductQtyAllocation"]
-        ST["7. SampleTransaction"]
-        SL["8. SampleLot"]
-        SI["9. SampleInventory"]
-        CD["10. LifeSciCallDiscussion"]
+    subgraph T2["Tier 2: Important — objects not provisioned in 260-pm"]
+        PAR["5. LifeSciProductAccountRestriction ⛔"]
+        TPA["6. TerritoryProductQtyAllocation ⛔"]
+        ST["7. SampleTransaction ⛔"]
+        SL["8. SampleLot ⛔"]
+        SI["9. SampleInventory ⛔"]
+        CD["10. LifeSciCallDiscussion ⛔"]
     end
 
-    style P2 fill:#e74c3c,color:#fff,stroke-width:3px
+    style GVS fill:#7ed321,color:#fff,stroke-width:3px
+    style P2 fill:#7ed321,color:#fff,stroke-width:3px
+    style MP fill:#7ed321,color:#fff
+    style PG fill:#7ed321,color:#fff
+    style TPP fill:#e74c3c,color:#fff
     style T1 fill:#fff3e0,stroke:#f5a623
-    style T2 fill:#e8f5e9,stroke:#7ed321
+    style T2 fill:#fde8e8,stroke:#e74c3c
 ```
 
 ---
