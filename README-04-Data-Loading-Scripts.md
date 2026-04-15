@@ -249,6 +249,25 @@ graph LR
 >
 > ![Product Alignment Jobs](images/product-alignment-jobs.png)
 
+After the batch job completes, 12 `ProductTerritoryAvailability` records are created — one per country marketable product:
+
+| Product | Territory | Alignment Type | Status |
+|---------|-----------|---------------|--------|
+| Immunexis US | US-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Immunexis GB | GB-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Immunexis FR | FR-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Immunexis IT | IT-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Immunexis ES | ES-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Immunexis DE | DE-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Cordim US | US-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Cordim GB | GB-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Cordim FR | FR-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Cordim IT | IT-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Cordim ES | ES-COUNTRY | Territory and Subordinates Inclusion | Active |
+| Cordim DE | DE-COUNTRY | Territory and Subordinates Inclusion | Active |
+
+Because each alignment uses **"Territory and Subordinates Inclusion"**, reps assigned to any city FSR territory (e.g., `GB-FSR-001-London`) automatically see the country's products (Immunexis GB, Cordim GB) without needing separate alignments per city.
+
 ---
 
 ## Expected Output After All Scripts
