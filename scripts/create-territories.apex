@@ -108,6 +108,7 @@ Territory2 existingGlobal = existingByDevName.get('GLOBAL');
 
 if (existingGlobal != null) {
     existingGlobal.Name = 'GLOBAL';
+    existingGlobal.AccountAccessLevel = 'Edit';
     update existingGlobal;
     globalTerr = existingGlobal;
     System.debug('[UPD] GLOBAL → ' + globalTerr.Id);
@@ -115,6 +116,7 @@ if (existingGlobal != null) {
     globalTerr = new Territory2(
         Name = 'GLOBAL',
         DeveloperName = 'GLOBAL',
+        AccountAccessLevel = 'Edit',
         Territory2ModelId = model.Id,
         Territory2TypeId = tType.Id
     );
@@ -137,11 +139,13 @@ for (String code : countryCodes) {
     if (existing != null) {
         existing.Name = name;
         existing.ParentTerritory2Id = globalTerr.Id;
+        existing.AccountAccessLevel = 'Edit';
         countriesToUpdate.add(existing);
     } else {
         countriesToInsert.add(new Territory2(
             Name = name,
             DeveloperName = devName,
+            AccountAccessLevel = 'Edit',
             Territory2ModelId = model.Id,
             Territory2TypeId = tType.Id,
             ParentTerritory2Id = globalTerr.Id
@@ -185,11 +189,13 @@ for (String code : countryCodes) {
         if (existing != null) {
             existing.Name = name;
             existing.ParentTerritory2Id = parentId;
+            existing.AccountAccessLevel = 'Edit';
             citiesToUpdate.add(existing);
         } else {
             citiesToInsert.add(new Territory2(
                 Name = name,
                 DeveloperName = devName,
+                AccountAccessLevel = 'Edit',
                 Territory2ModelId = model.Id,
                 Territory2TypeId = tType.Id,
                 ParentTerritory2Id = parentId
