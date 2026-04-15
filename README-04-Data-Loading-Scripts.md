@@ -245,6 +245,10 @@ graph LR
     style TDE fill:#9b59b6,color:#fff
 ```
 
+> **After running the script**, go to **Setup > Product Alignment Jobs** and run the **"Publish Draft Product Territory Alignments Batch Job"**. This is a standard Salesforce step that finalizes PTA records. While the script updates records to Active programmatically, running this job ensures the alignments are fully published and visible across all LSC features.
+>
+> ![Product Alignment Jobs](images/product-alignment-jobs.png)
+
 ---
 
 ## Expected Output After All Scripts
