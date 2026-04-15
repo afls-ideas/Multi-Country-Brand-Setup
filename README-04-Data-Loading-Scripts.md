@@ -222,7 +222,9 @@ sf apex run --file scripts/create-territory-product-alignment.apex --target-org 
 **How it works:**
 1. Looks up country territories and country marketable products
 2. Checks for existing alignments (idempotency)
-3. Inserts as `Draft` (platform requirement), then updates to `Active`
+3. Inserts as `Draft` (platform requirement)
+
+> **Do NOT activate PTA records via Apex.** The records must remain in Draft so the batch job can properly process them and expand the alignments into subordinate territories. Activating via Apex bypasses this expansion — products will not appear in child territories like `GB-FSR-001-London`.
 
 ```mermaid
 graph LR
