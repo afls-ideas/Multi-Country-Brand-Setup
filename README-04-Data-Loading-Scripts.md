@@ -6,12 +6,16 @@ These Anonymous Apex scripts create the full multi-country product hierarchy and
 
 ```mermaid
 flowchart LR
-    S1["Step 1<br/><b>create-products.apex</b><br/>38 Product2 records"] --> S2["Step 2<br/><b>create-marketable-products.apex</b><br/>12 LifeSciMarketableProduct records"]
-    S2 --> S3["Step 3<br/><b>Verify in org</b>"]
+    S1["Step 1<br/><b>create-products.apex</b><br/>38 Product2 records"] --> S2["Step 2<br/><b>create-marketable-products.apex</b><br/>12 LifeSciMarketableProduct"]
+    S2 --> S3["Step 3<br/><b>create-territories.apex</b><br/>25 Territory2 records"]
+    S3 --> S4["Step 4<br/><b>create-territory-product-alignment.apex</b><br/>12 ProductTerritoryAvailability"]
+    S4 --> S5["Step 5<br/><b>Verify in org</b>"]
 
     style S1 fill:#4a90d9,color:#fff
     style S2 fill:#f5a623,color:#fff
-    style S3 fill:#7ed321,color:#fff
+    style S3 fill:#9b59b6,color:#fff
+    style S4 fill:#e74c3c,color:#fff
+    style S5 fill:#7ed321,color:#fff
 ```
 
 **Prerequisites:**
@@ -129,7 +133,121 @@ Think of Product2 as the **definition** and LifeSciMarketableProduct as the **ac
 
 ---
 
-## Expected Output After Both Scripts
+## Step 3: Create Territory Hierarchy
+
+**Script:** `scripts/create-territories.apex`
+
+Creates 25 Territory2 records in a three-level hierarchy under the existing active Territory2Model:
+
+| Level | Naming Convention | Records |
+|-------|-------------------|---------|
+| 1 | GLOBAL | 1 |
+| 2 | `{CC}-COUNTRY` | 6 (US, GB, FR, IT, ES, DE) |
+| 3 | `{CC}-FSR-{seq}-{City}` | 18 (3 cities per country) |
+
+All territories have `AccountAccessLevel = Edit` (view and edit for accounts).
+
+**Run it:**
+```bash
+sf apex run --file scripts/create-territories.apex --target-org 260-pm
+```
+
+**How it works:**
+1. Looks up the active Territory2Model and Territory2Type
+2. Queries all existing territories by DeveloperName (idempotency key)
+3. Creates GLOBAL top-level, then countries, then cities
+4. Sets `AccountAccessLevel = 'Edit'` on all records
+
+```mermaid
+graph TD
+    G["GLOBAL"]
+    G --> US["US-COUNTRY"]
+    G --> GB["GB-COUNTRY"]
+    G --> FR["FR-COUNTRY"]
+    G --> IT["IT-COUNTRY"]
+    G --> ES["ES-COUNTRY"]
+    G --> DE["DE-COUNTRY"]
+
+    US --> US1["US-FSR-001-New York"]
+    US --> US2["US-FSR-002-Los Angeles"]
+    US --> US3["US-FSR-003-Chicago"]
+
+    GB --> GB1["GB-FSR-001-London"]
+    GB --> GB2["GB-FSR-002-Manchester"]
+    GB --> GB3["GB-FSR-003-Birmingham"]
+
+    DE --> DE1["DE-FSR-001-Berlin"]
+    DE --> DE2["DE-FSR-002-Munich"]
+    DE --> DE3["DE-FSR-003-Frankfurt"]
+
+    FR --> FR1["...Paris, Lyon, Marseille"]
+    IT --> IT1["...Rome, Milan, Naples"]
+    ES --> ES1["...Madrid, Barcelona, Valencia"]
+
+    style G fill:#9b59b6,color:#fff
+    style US fill:#9b59b6,color:#fff
+    style GB fill:#9b59b6,color:#fff
+    style FR fill:#9b59b6,color:#fff
+    style IT fill:#9b59b6,color:#fff
+    style ES fill:#9b59b6,color:#fff
+    style DE fill:#9b59b6,color:#fff
+```
+
+> These territories sit alongside the existing US-only territory hierarchy (RD - Midwest, Northeast, etc.) and do not modify it.
+
+---
+
+## Step 4: Align Marketable Products to Territories
+
+**Script:** `scripts/create-territory-product-alignment.apex`
+
+Creates 12 `ProductTerritoryAvailability` records — one per country marketable product aligned to its matching country territory.
+
+| Field | Value |
+|-------|-------|
+| `ProductId` | Country-level LifeSciMarketableProduct |
+| `TerritoryId` | Matching `{CC}-COUNTRY` Territory2 |
+| `AlignmentType` | Territory and Subordinates Inclusion |
+| `Purpose` | Visit |
+| `Status` | Active |
+| `UsageType` | LifeSciences |
+
+**"Territory and Subordinates Inclusion"** means the product is available in the country territory AND all city FSR territories underneath — no need to create separate alignments per city.
+
+**Run it:**
+```bash
+sf apex run --file scripts/create-territory-product-alignment.apex --target-org 260-pm
+```
+
+**How it works:**
+1. Looks up country territories and country marketable products
+2. Checks for existing alignments (idempotency)
+3. Inserts as `Draft` (platform requirement), then updates to `Active`
+
+```mermaid
+graph LR
+    subgraph "Marketable Product"
+        MGB["Cordim GB"]
+        MDE["Immunexis DE"]
+    end
+
+    subgraph "Territory (+ Subordinates)"
+        TGB["GB-COUNTRY<br/>→ London, Manchester, Birmingham"]
+        TDE["DE-COUNTRY<br/>→ Berlin, Munich, Frankfurt"]
+    end
+
+    MGB -->|PTA| TGB
+    MDE -->|PTA| TDE
+
+    style MGB fill:#f5a623,color:#fff
+    style MDE fill:#f5a623,color:#fff
+    style TGB fill:#9b59b6,color:#fff
+    style TDE fill:#9b59b6,color:#fff
+```
+
+---
+
+## Expected Output After All Scripts
 
 ```mermaid
 graph TD
@@ -176,20 +294,33 @@ graph TD
     style MKCOR fill:#4a90d9,color:#fff
 ```
 
-> **Record counts:** 38 Product2 (2 brands + 12 sub-brands + 24 samples) + 12 new LifeSciMarketableProduct = **50 total records created**
+> **Record counts:** 38 Product2 + 12 LifeSciMarketableProduct + 25 Territory2 + 12 ProductTerritoryAvailability = **87 total records created**
 
 ---
 
 ## Cleanup Scripts
 
-### Delete Product2 Records
-```bash
-sf apex run --file scripts/delete-products.apex --target-org 260-pm
+Run in reverse order — alignments first, then territories, then marketable products, then products.
+
+### 1. Delete Territory-Product Alignments
+```apex
+// Delete PTA records for our country marketable products
+List<Id> mktIds = new List<Id>();
+for (LifeSciMarketableProduct m : [SELECT Id FROM LifeSciMarketableProduct WHERE ProductCode LIKE 'IMMUNEXIS-%' OR ProductCode LIKE 'CORDIM-%']) {
+    mktIds.add(m.Id);
+}
+delete [SELECT Id FROM ProductTerritoryAvailability WHERE ProductId IN :mktIds];
+System.debug('Territory-product alignments deleted.');
 ```
 
-Deletes in reverse hierarchy order: Samples → Sub-Brands → Brands.
+### 2. Delete Territories
+```bash
+sf apex run --file scripts/delete-territories.apex --target-org 260-pm
+```
 
-### Delete LifeSciMarketableProduct Records
+Deletes in reverse order: Cities → Countries → GLOBAL.
+
+### 3. Delete LifeSciMarketableProduct Records
 ```apex
 // Delete country-level marketable products (not the Brand-level parents)
 delete [
@@ -199,11 +330,36 @@ delete [
 System.debug('Country marketable products deleted.');
 ```
 
+### 4. Delete Product2 Records
+```bash
+sf apex run --file scripts/delete-products.apex --target-org 260-pm
+```
+
+Deletes in reverse hierarchy order: Samples → Sub-Brands → Brands.
+
 ---
 
-## Data Source
+## Data Sources
 
-All brand definitions, countries, and dosages are stored in `data/products.json`. Edit that file to add brands, countries, or dosages, then update the scripts to match.
+| File | What It Defines |
+|------|-----------------|
+| `data/products.json` | Brands, countries, sample dosages |
+| `data/territories.json` | Country territories and cities |
+
+Edit these files and update the corresponding scripts to match, then re-run.
+
+---
+
+## Script Summary
+
+| Script | Creates | Records | Object |
+|--------|---------|---------|--------|
+| `scripts/create-products.apex` | Product hierarchy | 38 | Product2 |
+| `scripts/create-marketable-products.apex` | Marketable products | 12 | LifeSciMarketableProduct |
+| `scripts/create-territories.apex` | Territory hierarchy | 25 | Territory2 |
+| `scripts/create-territory-product-alignment.apex` | Product-territory alignment | 12 | ProductTerritoryAvailability |
+| `scripts/delete-products.apex` | Cleanup products | — | Product2 |
+| `scripts/delete-territories.apex` | Cleanup territories | — | Territory2 |
 
 ---
 

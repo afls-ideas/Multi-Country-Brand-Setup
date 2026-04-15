@@ -9,6 +9,7 @@ graph LR
     P2["<b>Product2</b><br/>(Sub-Brand)"]
 
     P2 --> MP["LifeSciMarketableProduct<br/>Territory assignment"]
+    MP --> PTA["ProductTerritoryAvailability<br/>Territory-product alignment"]
     P2 --> PG["ProductGuidance<br/>Product messages"]
     P2 --> TPP["LifeSciTerritoryProductPriority<br/>Priority ranking"]
     P2 --> PAR["LifeSciProductAccountRestriction<br/>Account restrictions"]
@@ -22,6 +23,7 @@ graph LR
 
     style P2 fill:#4a90d9,color:#fff,stroke-width:3px
     style MP fill:#f5a623,color:#fff
+    style PTA fill:#e74c3c,color:#fff
     style PG fill:#f5a623,color:#fff
     style TPP fill:#f5a623,color:#fff
     style PAR fill:#f5a623,color:#fff
@@ -34,7 +36,7 @@ graph LR
     style PST fill:#9b59b6,color:#fff
 ```
 
-> **Orange** = Detailing & Territory objects | **Green** = Sample Management objects | **Purple** = Specifications
+> **Orange** = Detailing & Territory objects | **Red** = Territory-Product alignment | **Green** = Sample Management objects | **Purple** = Specifications
 
 ---
 
@@ -57,6 +59,41 @@ graph LR
 **What it does:** Determines which products appear in the rep's product list on mobile and web. Each marketable product record ties a specific Product2 to a territory.
 
 **Multi-country impact:** Each country's territory gets marketable product records pointing to that country's sub-brands only. A US rep sees Immunexis US; a DE rep sees Immunexis DE. Country__c on this object enables filtering and validation.
+
+---
+
+### 2b. Territory-Product Alignment (ProductTerritoryAvailability)
+
+| Object | Relationship to Product | Notes |
+|---|---|---|
+| `ProductTerritoryAvailability` | Junction between LifeSciMarketableProduct and Territory2 | Controls which products are available in which territories |
+
+**What it does:** Links a marketable product to a territory. Uses `AlignmentType` to control scope:
+- **Territory and Subordinates Inclusion** — product available in this territory and all children (most common)
+- **Territory Inclusion** — product available in this territory only
+- **Territory Exclusion** — product explicitly excluded from a territory (overrides parent inclusion)
+
+**Multi-country impact:** Each country marketable product is aligned to its matching country territory with "Territory and Subordinates Inclusion". This cascades the product down to all city FSR territories in that country. A rep in `GB-FSR-001-London` automatically sees Cordim GB and Immunexis GB because they're aligned at `GB-COUNTRY`.
+
+```mermaid
+graph TD
+    MKT["Cordim GB<br/><i>LifeSciMarketableProduct</i>"]
+    PTA["ProductTerritoryAvailability<br/>Territory and Subordinates Inclusion"]
+    T1["GB-COUNTRY"]
+    T2["GB-FSR-001-London"]
+    T3["GB-FSR-002-Manchester"]
+    T4["GB-FSR-003-Birmingham"]
+
+    MKT --> PTA --> T1
+    T1 --> T2 & T3 & T4
+
+    style MKT fill:#f5a623,color:#fff
+    style PTA fill:#e74c3c,color:#fff
+    style T1 fill:#9b59b6,color:#fff
+    style T2 fill:#9b59b6,color:#fff
+    style T3 fill:#9b59b6,color:#fff
+    style T4 fill:#9b59b6,color:#fff
+```
 
 ---
 
@@ -205,6 +242,7 @@ Country__c on sample-level Product2 records and on `TerritoryProductQtyAllocatio
 |---|---|---|---|---|
 | 1 | Product Catalog | `Product2` | YES — is the sub-brand | YES |
 | 2 | Marketable Products | `LifeSciMarketableProduct` | YES | YES |
+| 2b | Territory-Product Alignment | `ProductTerritoryAvailability` | YES (via marketable product) | YES |
 | 3 | Product Messages | `ProductGuidance` | YES | YES |
 | 4 | Territory Priorities | `LifeSciTerritoryProductPriority` | YES | YES |
 | 5 | Account Restrictions | `LifeSciProductAccountRestriction` | YES | YES |
@@ -226,3 +264,5 @@ Country__c on sample-level Product2 records and on `TerritoryProductQtyAllocatio
 - [README-01: Product Hierarchy Architecture](README-01-Product-Hierarchy.md)
 - [README-03: Country Field Requirements Per Object](README-03-Country-Field-Requirements.md)
 - [README-04: Data Loading Scripts](README-04-Data-Loading-Scripts.md)
+- [README-05: Country Global Value Set](README-05-Country-Global-Value-Set.md)
+- [README-06: Parent-Child Approaches](README-06-Parent-Child-Approaches.md)

@@ -38,24 +38,24 @@ graph TD
         COR_DE_20["Cordim DE 20mg Sample"]
     end
 
-    IMM -->|ParentId| IMM_US
-    IMM -->|ParentId| IMM_GB
-    IMM -->|ParentId| IMM_FR
-    IMM -->|ParentId| IMM_IT
-    IMM -->|ParentId| IMM_ES
-    IMM -->|ParentId| IMM_DE
+    IMM -->|ParentProduct__c| IMM_US
+    IMM -->|ParentProduct__c| IMM_GB
+    IMM -->|ParentProduct__c| IMM_FR
+    IMM -->|ParentProduct__c| IMM_IT
+    IMM -->|ParentProduct__c| IMM_ES
+    IMM -->|ParentProduct__c| IMM_DE
 
-    COR -->|ParentId| COR_US
-    COR -->|ParentId| COR_GB
-    COR -->|ParentId| COR_FR
-    COR -->|ParentId| COR_IT
-    COR -->|ParentId| COR_ES
-    COR -->|ParentId| COR_DE
+    COR -->|ParentProduct__c| COR_US
+    COR -->|ParentProduct__c| COR_GB
+    COR -->|ParentProduct__c| COR_FR
+    COR -->|ParentProduct__c| COR_IT
+    COR -->|ParentProduct__c| COR_ES
+    COR -->|ParentProduct__c| COR_DE
 
-    IMM_DE -->|ParentId| IMM_DE_10
-    IMM_DE -->|ParentId| IMM_DE_25
-    COR_DE -->|ParentId| COR_DE_5
-    COR_DE -->|ParentId| COR_DE_20
+    IMM_DE -->|ParentProduct__c| IMM_DE_10
+    IMM_DE -->|ParentProduct__c| IMM_DE_25
+    COR_DE -->|ParentProduct__c| COR_DE_5
+    COR_DE -->|ParentProduct__c| COR_DE_20
 
     style IMM fill:#4a90d9,color:#fff
     style COR fill:#4a90d9,color:#fff
@@ -79,11 +79,12 @@ graph TD
 
 ## Key Design Decisions
 
-### Why Use Product2.ParentId?
-- **Standard field** — no custom development needed
-- LSC natively supports product hierarchy via `ParentId`
-- Mobile app and Admin Console respect the parent-child relationship
+### Why Use Product2.ParentProduct__c?
+- Custom lookup field that works without enabling the Product Hierarchy feature
+- Safe to deploy — no org-wide side effects
+- Fully customizable with validation rules, triggers, or flows
 - Enables roll-up reporting from sample → sub-brand → brand
+- Can migrate to standard `ParentId` later if Product Hierarchy is enabled (see [README-06](README-06-Parent-Child-Approaches.md))
 
 ### Why a Separate Sub-Brand Per Country?
 - **Product messages** (ProductGuidance) differ by country due to regulatory/compliance
@@ -128,3 +129,5 @@ The standard `Family` field on Product2 is used to distinguish hierarchy levels:
 - [README-02: LSC Areas Where Products Appear](README-02-LSC-Product-Areas.md)
 - [README-03: Country Field Requirements Per Object](README-03-Country-Field-Requirements.md)
 - [README-04: Data Loading Scripts](README-04-Data-Loading-Scripts.md)
+- [README-05: Country Global Value Set](README-05-Country-Global-Value-Set.md)
+- [README-06: Parent-Child Approaches](README-06-Parent-Child-Approaches.md)
