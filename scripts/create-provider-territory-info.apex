@@ -45,6 +45,21 @@ Territory2 territory = territories[0];
 System.debug('Territory: ' + territory.Name + ' (' + territory.Id + ')');
 
 // -----------------------------------------------------------
+// 2b. LOOK UP TERRITORY OWNER (REP ASSIGNED TO TERRITORY)
+// -----------------------------------------------------------
+// PATI records must be owned by the rep assigned to the territory,
+// otherwise sharing rules prevent the rep from seeing them.
+
+List<UserTerritory2Association> uta = [
+    SELECT UserId
+    FROM UserTerritory2Association
+    WHERE Territory2Id = :territory.Id
+    LIMIT 1
+];
+Id territoryOwnerId = uta.isEmpty() ? UserInfo.getUserId() : uta[0].UserId;
+System.debug('PATI OwnerId: ' + territoryOwnerId);
+
+// -----------------------------------------------------------
 // 3. FIND PERSON ACCOUNTS NOT YET IN THIS TERRITORY
 // -----------------------------------------------------------
 
@@ -119,6 +134,7 @@ for (Account acct : accounts) {
     patiToInsert.add(new ProviderAcctTerritoryInfo(
         AccountId = acct.Id,
         Territory2Id = territory.Id,
+        OwnerId = territoryOwnerId,
         IsActive = true,
         IsAvailableOffline = true,
         IsTargetedAccount = true

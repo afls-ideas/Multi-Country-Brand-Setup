@@ -53,6 +53,7 @@ Both are needed. `ObjectTerritory2Association` alone is not enough — LSC featu
 | `Territory2Id` | Lookup(Territory2) | Yes | The territory where this account should appear |
 | `IsActive` | Boolean | Yes | Whether the assignment is active |
 | `IsAvailableOffline` | Boolean | Yes | **Must be `true`** for the account to appear in OMCC and offline-synced views |
+| `OwnerId` | Lookup(User) | Yes | **Must be the rep assigned to the territory.** If owned by an admin, the rep cannot see the record due to sharing rules |
 | `IsTargetedAccount` | Boolean | Yes | Whether this is a targeted (priority) account for the territory |
 | `AssignmentApprovalStatus` | Picklist | No | Approval workflow status |
 | `PreferredAddressId` | Lookup(ContactPointAddress) | No | Preferred visit address |
@@ -134,6 +135,7 @@ flowchart LR
 | Rep sees no accounts despite PATI existing | `IsAvailableOffline = false` on PATI | Update PATI records to set `IsAvailableOffline = true` |
 | Accounts appear but aren't targeted | `IsTargetedAccount = false` | Update PATI records to set `IsTargetedAccount = true` |
 | Account shows in OMCC but not in visit planning | PATI exists but `IsActive = false` | Update PATI to `IsActive = true` |
+| PATI records exist but rep query returns 0 rows | `OwnerId` is set to admin, not the rep — sharing rules block access | Update `OwnerId` to the rep assigned to the territory |
 | Account assigned to wrong territory | OTA points to wrong Territory2 | Delete and recreate OTA + PATI for correct territory |
 
 ---
