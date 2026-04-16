@@ -157,3 +157,6 @@ force-app/main/default/objects/<ObjectName>/fields/Country__c.field-meta.xml
 - [README-01: Product Hierarchy Architecture](README-01-Product-Hierarchy.md)
 - [README-02: LSC Areas Where Products Appear](README-02-LSC-Product-Areas.md)
 - [README-04: Data Loading Scripts](README-04-Data-Loading-Scripts.md)
+- [README-05: Country Global Value Set](README-05-Country-Global-Value-Set.md)
+- [README-06: Parent-Child Approaches](README-06-Parent-Child-Approaches.md)
+- [README-07: Provider Account Territory Info](README-07-Provider-Account-Territory-Info.md)

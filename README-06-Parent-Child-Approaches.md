@@ -180,3 +180,14 @@ update products;
 | Permission Set (FLS) | `force-app/main/default/permissionsets/Multi_Country_Brand_Admin.permissionset-meta.xml` | Deployed to 260-pm |
 | Create script | `scripts/create-products.apex` | Uses ParentProduct__c by default |
 | Delete script | `scripts/delete-products.apex` | No change needed |
+
+---
+
+## Related READMEs
+
+- [README-01: Product Hierarchy Architecture](README-01-Product-Hierarchy.md)
+- [README-02: LSC Areas Where Products Appear](README-02-LSC-Product-Areas.md)
+- [README-03: Country Field Requirements Per Object](README-03-Country-Field-Requirements.md)
+- [README-04: Data Loading Scripts](README-04-Data-Loading-Scripts.md)
+- [README-05: Country Global Value Set](README-05-Country-Global-Value-Set.md)
+- [README-07: Provider Account Territory Info](README-07-Provider-Account-Territory-Info.md)

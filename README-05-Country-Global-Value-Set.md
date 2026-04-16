@@ -180,3 +180,5 @@ Referenced by all `Country__c` fields via `<valueSetName>Country</valueSetName>`
 - [README-02: LSC Areas Where Products Appear](README-02-LSC-Product-Areas.md)
 - [README-03: Country Field Requirements Per Object](README-03-Country-Field-Requirements.md)
 - [README-04: Data Loading Scripts](README-04-Data-Loading-Scripts.md)
+- [README-06: Parent-Child Approaches](README-06-Parent-Child-Approaches.md)
+- [README-07: Provider Account Territory Info](README-07-Provider-Account-Territory-Info.md)
