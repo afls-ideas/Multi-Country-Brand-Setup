@@ -9,11 +9,13 @@ flowchart TD
     subgraph "Prerequisites (already done)"
         P2["Product2<br/>(Sample-level records)"]
         T2["Territory2<br/>(Rep territories)"]
-        MKT["LifeSciMarketableProduct<br/>(Country brands)"]
+        MKT_BRAND["LifeSciMarketableProduct<br/>Type = Brand<br/>(Country brands)"]
         PTA["ProductTerritoryAvailability<br/>(Brand → Territory alignment)"]
     end
 
     subgraph "Sample Setup (this README)"
+        MKT_PROD["LifeSciMarketableProduct<br/>Type = Product<br/>(Sample-level, with DistributionMethod)"]
+        PI["ProductItem<br/>(Rep inventory)"]
         TP["TimePeriod<br/>(Allocation date range)"]
         TPQA["TerritoryProdtQtyAllocation<br/>(Sample quota per territory)"]
         PSLT["ProviderSampleLimitTemplate<br/>(Limit rules)"]
@@ -24,18 +26,23 @@ flowchart TD
         PVRS["ProviderVisitRqstSample<br/>(Sample request on a visit)"]
     end
 
+    P2 --> MKT_PROD
+    MKT_BRAND --> MKT_PROD
+    P2 --> PI
     P2 --> TPQA
     T2 --> TPQA
     TP --> TPQA
     TPQA --> PVRS
     PSLT --> PSL
     PSL --> PVRS
-    MKT --> PSL
+    MKT_BRAND --> PSL
 
     style P2 fill:#4a90d9,color:#fff
     style T2 fill:#9b59b6,color:#fff
-    style MKT fill:#f5a623,color:#fff
+    style MKT_BRAND fill:#f5a623,color:#fff
+    style MKT_PROD fill:#f5a623,color:#fff
     style PTA fill:#e74c3c,color:#fff
+    style PI fill:#2ecc71,color:#fff
     style TP fill:#2ecc71,color:#fff
     style TPQA fill:#2ecc71,color:#fff
     style PSLT fill:#2ecc71,color:#fff
@@ -53,6 +60,8 @@ flowchart TD
 | **Territory Product Qty Allocation** | `TerritoryProdtQtyAllocation` | `Product2`, `Territory2`, `TimePeriod` | How many units of a sample product a territory can distribute |
 | **Provider Sample Limit Template** | `ProviderSampleLimitTemplate` | — | Defines the rules/limits for sample distribution (e.g., country-specific compliance rules) |
 | **Provider Sample Limit** | `ProviderSampleLimit` | `LifeSciMarketableProduct`, `Account`, `ProviderSampleLimitTemplate` | Account-level limit — controls how many samples an HCP can receive |
+| **Marketable Product (Sample-level)** | `LifeSciMarketableProduct` | `Product2`, parent `LifeSciMarketableProduct` | Sample-level marketable product with `Type = 'Product'`, `DistributionMethod`, and `ProductSpecificationType = 'LSSampleProduct'` |
+| **Product Item (Rep Inventory)** | `ProductItem` | `Product2`, `Location` | Physical inventory of sample units in the rep's inventory location |
 | **Provider Visit Requested Sample** | `ProviderVisitRqstSample` | `Product2`, `ProviderVisit` | Runtime record — created when a rep requests a sample during a visit |
 
 > **Key distinction:** `TerritoryProdtQtyAllocation.ProductId` references **Product2** (the sample-level SKU), while `ProviderSampleLimit.ProductId` references **LifeSciMarketableProduct** (the brand-level marketable product).
@@ -72,9 +81,88 @@ Before setting up samples, you must have:
 
 ---
 
+## How Samples Are Resolved During a Visit
+
+When a rep opens the **Samples** panel during Visit Engagement, the platform executes a series of SOQL queries to determine which sample products to display. Understanding this chain is critical for troubleshooting "No items found" issues.
+
+| # | Object Queried | SOQL | Rows | Purpose |
+|---|---|---|---|---|
+| 1 | `UserAdditionalInfo` | `SELECT Preference, UserId FROM UserAdditionalInfo WHERE UserId IN (:currentUserId)` | 1 | Loads the current user's preferences (language, display settings) to personalize the visit experience. |
+| 2 | `ProductTerrDtlAvailability` | `SELECT ProductId, SortOrder FROM ProductTerrDtlAvailability WHERE (SortOrder != null AND RelatedTerritory.Name = '{territory}')` | 0+ | Checks for territory-aligned marketable products with sort orders. Returns the candidate product IDs. If 0 rows, no products (or samples) will display. |
+| 3 | `ApexClass` | `SELECT Id, Name, NamespacePrefix, ApiVersion FROM ApexClass WHERE (Name = 'ClassUtilities' AND NamespacePrefix = 'lsc4ce')` | 1 | Internal framework lookup — loads the LSC managed package utility class. |
+| 4 | `LifeSciProductAcctRstrc` | `SELECT AccountId, ProductId, Product.Name FROM LifeSciProductAcctRstrc WHERE TerritoryId = null` | 0+ | Loads **global** product-account restrictions. Products matching a restriction are excluded. |
+| 5 | `LifeSciProductAcctRstrc` | `SELECT AccountId, ProductId, Product.Name, TerritoryId, Territory.Name FROM LifeSciProductAcctRstrc WHERE Territory.Name = '{territory}'` | 0+ | Loads **territory-specific** product-account restrictions. |
+| 6 | `LifeSciMarketableProduct` | `SELECT Id, Name, Type, SortOrder, ... FROM LifeSciMarketableProduct WHERE (IsActive = true AND ... AND Id IN (:productIdsFromQuery2) AND Type IN ('Brand','Indication','TherapeuticArea','BrandIndication') AND IsCompetitorProduct = false)` | 0+ | Resolves the **Brand-level** marketable products for Product Details. Returns the parent brands (e.g., Immunexis GB, Cordim GB). |
+| 7 | `LifeSciMarketableProduct` | `SELECT Id, Name, Type, ... FROM LifeSciMarketableProduct WHERE Id IN (:brandIdsFromQuery6)` | 0+ | Re-queries the brand marketable products with full field set including `DistributionMethod` and `DefaultDistributionQuantity`. |
+| 8 | `ProductItem` | `SELECT Id, Product2Id, Product2.Name, ProductName FROM ProductItem WHERE LocationId IN (SELECT Id FROM Location WHERE (PrimaryUserId = :userId AND IsInventoryLocation = true AND LocationType = 'User Inventory'))` | 0+ | **Key query.** Loads the rep's physical inventory. Returns `Product2Id` values for products the rep actually has in stock. If the rep has no `ProductItem` records for sample products, no samples will appear. |
+| 9 | `LifeSciMarketableProduct` | `SELECT Id FROM LifeSciMarketableProduct WHERE (IsCompetitorProduct != true AND Type IN ('Product') AND ParentBrandProductId IN (:brandIdsFromQuery6) AND DistributionMethod IN ('Drop','DropAndShip') AND ProductId IN (:product2IdsFromQuery8) AND ProductSpecificationType IN ('LSSampleProduct'))` | 0+ | **The critical sample filter.** This is where most "No items found" issues originate. ALL conditions must pass — see filter analysis below. |
+| 10 | `Territory2Model` | `SELECT Id FROM Territory2Model WHERE State = 'Active' LIMIT 1` | 1 | Finds the active territory model for subsequent territory lookups. |
+| 11 | `Territory2` | `SELECT Name, DeveloperName, ... FROM Territory2 WHERE (Territory2ModelId = :modelId AND Name = '{territory}')` | 1 | Loads the rep's territory details. |
+| 12 | `ProductItem` | _(same as #8 — re-queried)_ | 0+ | Re-queries inventory (possibly for a different code path). |
+
+### Query #9 Filter Conditions (All Must Pass)
+
+This is the query that determines which sample products appear in the Samples panel:
+
+| Condition | What It Checks | Common Failure |
+|---|---|---|
+| `IsCompetitorProduct != true` | Must not be a competitor product | Flagged as competitor |
+| **`Type IN ('Product')`** | **Must be a Product-level (not Brand) marketable product** | **Only Brand-level marketable products exist — no sample-level `Type = 'Product'` records created** |
+| **`ParentBrandProductId IN (:brandIds)`** | **Must be a child of a Brand marketable product aligned to the territory** | **`ParentBrandProductId` doesn't point to the correct GB Brand marketable product** |
+| **`DistributionMethod IN ('Drop','DropAndShip')`** | **Must have a distribution method set** | **`DistributionMethod` is null — field not populated on the marketable product** |
+| **`ProductId IN (:product2Ids)`** | **The linked Product2 must be in the rep's inventory (ProductItem)** | **No `ProductItem` records exist for the rep's inventory location** |
+| **`ProductSpecificationType IN ('LSSampleProduct')`** | **The linked Product2 must have `SpecificationType = 'LSSampleProduct'`** | **Product2.SpecificationType not set (auto-populates to marketable product)** |
+
+> **Multi-country gotcha:** The `create-marketable-products.apex` script creates Brand-level marketable products (`Type = 'Brand'`). For samples, you also need **Product-level** marketable products (`Type = 'Product'`) with `DistributionMethod` set and `ProductId` linking to the sample Product2 records. These are created by `scripts/create-sample-marketable-products.apex`.
+
+---
+
 ## Step-by-Step Setup
 
-### Step 1: TimePeriod
+### Step 1: Sample-Level LifeSciMarketableProduct Records
+
+The Samples panel requires **Product-level** marketable products (separate from the Brand-level ones used for Product Details). These must have:
+- `Type = 'Product'`
+- `ProductId` → the sample-level Product2 record
+- `ParentBrandProductId` → the country Brand marketable product
+- `DistributionMethod` → `Drop`, `Ship`, or `DropAndShip`
+
+The platform auto-populates `ProductSpecificationType` from `Product2.SpecificationType`.
+
+**Script:** `scripts/create-sample-marketable-products.apex`
+
+```bash
+sf apex run --file scripts/create-sample-marketable-products.apex --target-org 260-pm
+```
+
+Creates 4 records for GB:
+
+| Name | Type | ProductId | ParentBrandProductId | DistributionMethod |
+|------|------|-----------|---------------------|--------------------|
+| Immunexis GB 10mg | Product | Immunexis GB 10mg Sample | Immunexis GB (Brand) | DropAndShip |
+| Immunexis GB 25mg | Product | Immunexis GB 25mg Sample | Immunexis GB (Brand) | DropAndShip |
+| Cordim GB 5mg | Product | Cordim GB 5mg Sample | Cordim GB (Brand) | DropAndShip |
+| Cordim GB 20mg | Product | Cordim GB 20mg Sample | Cordim GB (Brand) | DropAndShip |
+
+---
+
+### Step 2: ProductItem (Rep Inventory)
+
+The rep must have physical inventory of the sample products. The platform checks `ProductItem` records in the rep's `Location` (type = `User Inventory`).
+
+**Script:** `scripts/create-sample-inventory.apex`
+
+```bash
+sf apex run --file scripts/create-sample-inventory.apex --target-org 260-pm
+```
+
+Creates `ProductItem` records with `QuantityOnHand = 1000` for each GB sample product in the rep's inventory location.
+
+> **Note:** The rep must have a `Location` record with `LocationType = 'User Inventory'` and `IsInventoryLocation = true`. This is typically created automatically when the rep is provisioned for sample management.
+
+---
+
+### Step 3: TimePeriod
 
 A `TimePeriod` defines the date range during which sample allocations are valid. The org may already have time periods — check first.
 
@@ -98,7 +186,7 @@ insert tp;
 
 ---
 
-### Step 2: TerritoryProdtQtyAllocation
+### Step 4: TerritoryProdtQtyAllocation
 
 This is the **sample quota** — how many units of each sample product a territory can distribute during the time period.
 
@@ -111,6 +199,7 @@ This is the **sample quota** — how many units of each sample product a territo
 | `TimePeriodId` | Lookup(TimePeriod) | The active time period |
 | `AllocationType` | Picklist | `Drop` (in-person) or `Ship` (mailed to HCP) |
 | `AllocatedQuantity` | Number | Total units available for this territory/product/type |
+| `OwnerId` | Lookup(User) | **Must be the rep assigned to the territory** — if sharing is Private, the rep cannot see allocations owned by the admin |
 | `MaxDisbursementLimitQty` | Number | Max units per single transaction (optional) |
 
 **Script:** `scripts/create-sample-allocations.apex`
@@ -138,7 +227,7 @@ The script creates **2 allocations per sample product** (Drop + Ship):
 
 ---
 
-### Step 3: ProviderSampleLimitTemplate
+### Step 5: ProviderSampleLimitTemplate
 
 Sample limit templates define the **rules** governing how samples can be distributed. The org has a pre-configured template:
 
@@ -152,7 +241,7 @@ Country-specific templates (Germany AMG, Italy Class A/C, Belgium, etc.) exist b
 
 ---
 
-### Step 4: ProviderSampleLimit
+### Step 6: ProviderSampleLimit
 
 This links an **account** (HCP) to a **marketable product** with a **limit template**, controlling how many samples the HCP can receive.
 
@@ -179,7 +268,7 @@ The script:
 
 ---
 
-### Step 5: Verify Admin Console Settings
+### Step 7: Verify Admin Console Settings
 
 The **Sample Drop** configuration must be active in Admin Console. Verify with Tooling API:
 
@@ -203,41 +292,19 @@ Both should be active.
 
 ---
 
-## How Samples Work at Runtime
+### Prerequisites Checklist
 
-When a rep opens a visit and goes to **Sample Drop**:
+For a sample product to appear in the **Samples** panel during a visit, ALL of these must be true:
 
-```mermaid
-sequenceDiagram
-    participant Rep as Rep (Mobile/Web)
-    participant LSC as LSC Platform
-    participant TPQA as TerritoryProdtQtyAllocation
-    participant PSL as ProviderSampleLimit
-    participant PVRS as ProviderVisitRqstSample
-
-    Rep->>LSC: Open Visit > Sample Drop
-    LSC->>TPQA: Query: Which products are allocated<br/>to this rep's territory?
-    TPQA-->>LSC: Return sample products + quantities
-    LSC->>PSL: Query: What are the limits for<br/>this account + products?
-    PSL-->>LSC: Return account-level limits
-    LSC-->>Rep: Show available samples with limits
-    Rep->>LSC: Select products + quantities
-    LSC->>PVRS: Create ProviderVisitRqstSample record
-    PVRS-->>LSC: Record saved
-    LSC->>TPQA: Decrement remaining quantity
-```
-
-### What Must Be True for Samples to Appear
-
-| Condition | Object | Common Failure |
-|-----------|--------|---------------|
-| Sample products exist in Product2 | `Product2` (Family = 'Sample') | Missing sample-level records |
-| Territory has allocations for the sample products | `TerritoryProdtQtyAllocation` | No allocation for rep's territory |
-| Allocation is for the current time period | `TimePeriod` | Time period expired or not yet started |
-| Allocated quantity > 0 remaining | `TerritoryProdtQtyAllocation` | All samples already distributed |
-| Account has a sample limit record | `ProviderSampleLimit` | No limit record for this account + product |
-| Sample limit template is active | `ProviderSampleLimitTemplate` | Template inactive |
-| Admin Console > Sample Drop is active | `LifeSciConfigRecord` | Feature not enabled |
+- [ ] **Brand marketable product aligned to territory**: A `ProductTerritoryAvailability` record links the Brand marketable product (e.g., `Immunexis GB`) to the rep's territory — this feeds query #2
+- [ ] **Sample-level marketable product exists**: A `LifeSciMarketableProduct` with `Type = 'Product'`, `ParentBrandProductId` → the Brand, `ProductId` → the sample Product2, `DistributionMethod` set, and `ProductSpecificationType = 'LSSampleProduct'` (auto-populated from Product2)
+- [ ] **Rep has inventory**: A `ProductItem` record exists in the rep's `Location` (User Inventory) for the sample Product2
+- [ ] **Territory has allocation**: A `TerritoryProdtQtyAllocation` record exists for the sample Product2 in the rep's territory with a current `TimePeriod`
+- [ ] **Allocation OwnerId is the rep**: Under Private sharing, the rep can't see allocations owned by the admin
+- [ ] **Allocated quantity > 0 remaining**: Not all samples already distributed
+- [ ] **Account has sample limit**: A `ProviderSampleLimit` record exists for the account + Brand marketable product
+- [ ] **Sample limit template is active**: The `ProviderSampleLimitTemplate` referenced by the limit must be active
+- [ ] **Admin Console > Sample Drop is active**: The `Sample_Drop` config record must be active
 
 ---
 
@@ -251,8 +318,10 @@ flowchart LR
     S2 --> S3["Step 3<br/><b>create-territories</b>"]
     S3 --> S4["Step 4<br/><b>create-territory-product-alignment</b>"]
     S4 --> S5["Step 5<br/><b>create-provider-territory-info</b>"]
-    S5 --> S6a["Step 6a<br/><b>create-sample-allocations</b>"]
-    S6a --> S6b["Step 6b<br/><b>create-sample-limits</b>"]
+    S5 --> S6a["Step 6a<br/><b>create-sample-marketable-products</b>"]
+    S6a --> S6b["Step 6b<br/><b>create-sample-inventory</b>"]
+    S6b --> S6c["Step 6c<br/><b>create-sample-allocations</b>"]
+    S6c --> S6d["Step 6d<br/><b>create-sample-limits</b>"]
 
     style S1 fill:#4a90d9,color:#fff
     style S2 fill:#f5a623,color:#fff
@@ -261,6 +330,8 @@ flowchart LR
     style S5 fill:#2ecc71,color:#fff
     style S6a fill:#2ecc71,color:#fff
     style S6b fill:#2ecc71,color:#fff
+    style S6c fill:#2ecc71,color:#fff
+    style S6d fill:#2ecc71,color:#fff
 ```
 
 ---
@@ -269,9 +340,11 @@ flowchart LR
 
 | Script | Creates | Records | Object |
 |--------|---------|---------|--------|
+| `scripts/create-sample-marketable-products.apex` | Sample-level marketable products | 4 per country | LifeSciMarketableProduct |
+| `scripts/create-sample-inventory.apex` | Rep inventory items | 4 per rep | ProductItem |
 | `scripts/create-sample-allocations.apex` | Territory sample quotas | 8 (4 products x 2 types) | TerritoryProdtQtyAllocation |
 | `scripts/create-sample-limits.apex` | Account sample limits | N accounts x 2 products | ProviderSampleLimit |
-| `scripts/delete-sample-data.apex` | Cleanup all sample data | — | TerritoryProdtQtyAllocation + ProviderSampleLimit |
+| `scripts/delete-sample-data.apex` | Cleanup all sample data | — | All of the above |
 
 ---
 

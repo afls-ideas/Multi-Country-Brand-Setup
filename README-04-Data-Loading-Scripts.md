@@ -10,9 +10,11 @@ flowchart LR
     S2 --> S3["Step 3<br/><b>create-territories.apex</b><br/>25 Territory2 records"]
     S3 --> S4["Step 4<br/><b>create-territory-product-alignment.apex</b><br/>12 ProductTerritoryAvailability"]
     S4 --> S5["Step 5<br/><b>create-provider-territory-info.apex</b><br/>Account → Territory visibility"]
-    S5 --> S6a["Step 6a<br/><b>create-sample-allocations.apex</b><br/>8 TerritoryProdtQtyAllocation"]
-    S6a --> S6b["Step 6b<br/><b>create-sample-limits.apex</b><br/>ProviderSampleLimit records"]
-    S6b --> S7["Step 7<br/><b>Verify in org</b>"]
+    S5 --> S6a["Step 6a<br/><b>create-sample-marketable-products.apex</b><br/>4 sample LifeSciMarketableProduct"]
+    S6a --> S6b["Step 6b<br/><b>create-sample-inventory.apex</b><br/>4 ProductItem records"]
+    S6b --> S6c["Step 6c<br/><b>create-sample-allocations.apex</b><br/>8 TerritoryProdtQtyAllocation"]
+    S6c --> S6d["Step 6d<br/><b>create-sample-limits.apex</b><br/>ProviderSampleLimit records"]
+    S6d --> S7["Step 7<br/><b>Verify in org</b>"]
 
     style S1 fill:#4a90d9,color:#fff
     style S2 fill:#f5a623,color:#fff
@@ -21,6 +23,8 @@ flowchart LR
     style S5 fill:#2ecc71,color:#fff
     style S6a fill:#2ecc71,color:#fff
     style S6b fill:#2ecc71,color:#fff
+    style S6c fill:#2ecc71,color:#fff
+    style S6d fill:#2ecc71,color:#fff
     style S7 fill:#7ed321,color:#fff
 ```
 
@@ -299,7 +303,27 @@ sf apex run --file scripts/create-provider-territory-info.apex --target-org 260-
 
 ## Step 6: Create Sample Management Data
 
-### Step 6a: Sample Allocations
+### Step 6a: Sample Marketable Products
+
+**Script:** `scripts/create-sample-marketable-products.apex`
+
+Creates sample-level `LifeSciMarketableProduct` records with `Type = 'Product'`, `DistributionMethod = 'DropAndShip'`, and `ProductSpecificationType = 'LSSampleProduct'` (auto-populated). These are required for the Samples panel during Visit Engagement.
+
+```bash
+sf apex run --file scripts/create-sample-marketable-products.apex --target-org 260-pm
+```
+
+### Step 6b: Sample Inventory
+
+**Script:** `scripts/create-sample-inventory.apex`
+
+Creates `ProductItem` records in the rep's inventory location for each sample product.
+
+```bash
+sf apex run --file scripts/create-sample-inventory.apex --target-org 260-pm
+```
+
+### Step 6c: Sample Allocations
 
 **Script:** `scripts/create-sample-allocations.apex`
 
@@ -309,12 +333,7 @@ Creates `TerritoryProdtQtyAllocation` records — sample quotas for each sample 
 sf apex run --file scripts/create-sample-allocations.apex --target-org 260-pm
 ```
 
-**How it works:**
-1. Looks up the target territory and sample-level Product2 records for the country
-2. Finds a current TimePeriod covering today
-3. Creates 2 allocations per sample product (Drop + Ship)
-
-### Step 6b: Sample Limits
+### Step 6d: Sample Limits
 
 **Script:** `scripts/create-sample-limits.apex`
 
@@ -324,12 +343,7 @@ Creates `ProviderSampleLimit` records linking accounts to marketable products wi
 sf apex run --file scripts/create-sample-limits.apex --target-org 260-pm
 ```
 
-**How it works:**
-1. Finds accounts in the territory (via ProviderAcctTerritoryInfo)
-2. Finds country-level Brand marketable products
-3. Creates a limit record per account × product using the Generic Template
-
-> See [README-08: Sample Management Setup](README-08-Sample-Management-Setup.md) for full documentation on the sample management object chain and prerequisites.
+> See [README-08: Sample Management Setup](README-08-Sample-Management-Setup.md) for full documentation on the sample SOQL resolution chain, object relationships, and troubleshooting.
 
 ---
 
@@ -458,9 +472,11 @@ Edit these files and update the corresponding scripts to match, then re-run.
 | `scripts/delete-products.apex` | Cleanup products | — | Product2 |
 | `scripts/delete-territories.apex` | Cleanup territories | — | Territory2 |
 | `scripts/delete-provider-territory-info.apex` | Cleanup account-territory | — | ProviderAcctTerritoryInfo + ObjectTerritory2Association |
+| `scripts/create-sample-marketable-products.apex` | Sample-level marketable products | 4 per country | LifeSciMarketableProduct |
+| `scripts/create-sample-inventory.apex` | Rep inventory items | 4 per rep | ProductItem |
 | `scripts/create-sample-allocations.apex` | Territory sample quotas | 8 per territory | TerritoryProdtQtyAllocation |
 | `scripts/create-sample-limits.apex` | Account sample limits | N accounts x 2 products | ProviderSampleLimit |
-| `scripts/delete-sample-data.apex` | Cleanup sample data | — | TerritoryProdtQtyAllocation + ProviderSampleLimit |
+| `scripts/delete-sample-data.apex` | Cleanup all sample data | — | All sample objects |
 
 ---
 

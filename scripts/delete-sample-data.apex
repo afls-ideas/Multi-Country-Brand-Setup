@@ -1,7 +1,8 @@
 // ============================================================
 // delete-sample-data.apex
-// Deletes TerritoryProdtQtyAllocation and ProviderSampleLimit
-// records for a target territory and country. Safe cleanup.
+// Deletes all sample-related records for a target territory
+// and country: ProductItem, LifeSciMarketableProduct (Product
+// type), TerritoryProdtQtyAllocation, ProviderSampleLimit.
 // ============================================================
 
 // ---- CONFIGURABLE ----
@@ -22,7 +23,45 @@ if (territories.isEmpty()) {
 }
 Territory2 territory = territories[0];
 
-// Step 2: Delete TerritoryProdtQtyAllocation records
+// Step 2: Delete ProductItem records for the rep's inventory
+List<UserTerritory2Association> utas = [
+    SELECT UserId FROM UserTerritory2Association
+    WHERE Territory2Id = :territory.Id LIMIT 1
+];
+if (!utas.isEmpty()) {
+    List<Location> locations = [
+        SELECT Id FROM Location
+        WHERE PrimaryUserId = :utas[0].UserId AND IsInventoryLocation = true AND LocationType = 'User Inventory'
+        LIMIT 1
+    ];
+    if (!locations.isEmpty()) {
+        Set<Id> sampleP2Ids = new Set<Id>();
+        for (Product2 p : [SELECT Id FROM Product2 WHERE Family = 'Sample' AND Country__c = :COUNTRY_CODE]) {
+            sampleP2Ids.add(p.Id);
+        }
+        List<ProductItem> items = [SELECT Id FROM ProductItem WHERE LocationId = :locations[0].Id AND Product2Id IN :sampleP2Ids];
+        if (!items.isEmpty()) {
+            delete items;
+            System.debug('Deleted ' + items.size() + ' ProductItem records.');
+        } else {
+            System.debug('No ProductItem records to delete.');
+        }
+    }
+}
+
+// Step 3: Delete sample-level LifeSciMarketableProduct records (Type = Product)
+List<LifeSciMarketableProduct> sampleMkts = [
+    SELECT Id FROM LifeSciMarketableProduct
+    WHERE Type = 'Product' AND ProductId IN (SELECT Id FROM Product2 WHERE Family = 'Sample' AND Country__c = :COUNTRY_CODE)
+];
+if (!sampleMkts.isEmpty()) {
+    delete sampleMkts;
+    System.debug('Deleted ' + sampleMkts.size() + ' sample LifeSciMarketableProduct records.');
+} else {
+    System.debug('No sample LifeSciMarketableProduct records to delete.');
+}
+
+// Step 4: Delete TerritoryProdtQtyAllocation records
 List<Product2> sampleProducts = [
     SELECT Id FROM Product2
     WHERE Family = 'Sample' AND Country__c = :COUNTRY_CODE
@@ -43,7 +82,7 @@ if (!allocations.isEmpty()) {
     System.debug('No TerritoryProdtQtyAllocation records to delete.');
 }
 
-// Step 3: Delete ProviderSampleLimit records
+// Step 5: Delete ProviderSampleLimit records
 List<LifeSciMarketableProduct> mktProducts = [
     SELECT Id FROM LifeSciMarketableProduct
     WHERE Country__c = :COUNTRY_CODE AND Type = 'Brand'

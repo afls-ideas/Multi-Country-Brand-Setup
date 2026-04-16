@@ -25,6 +25,20 @@ if (territories.isEmpty()) {
 Territory2 territory = territories[0];
 System.debug('Found territory: ' + territory.Name + ' (' + territory.Id + ')');
 
+// Step 1b: Look up the territory owner (rep assigned to this territory)
+List<UserTerritory2Association> utas = [
+    SELECT UserId, User.Username
+    FROM UserTerritory2Association
+    WHERE Territory2Id = :territory.Id
+    LIMIT 1
+];
+if (utas.isEmpty()) {
+    System.debug('ERROR: No user assigned to territory ' + territory.Name + '. Assign a rep first.');
+    return;
+}
+Id territoryOwnerId = utas[0].UserId;
+System.debug('Territory owner: ' + utas[0].User.Username + ' (' + territoryOwnerId + ')');
+
 // Step 2: Find sample-level Product2 records for this country
 List<Product2> sampleProducts = [
     SELECT Id, Name, ProductCode
@@ -91,7 +105,8 @@ for (Product2 p : sampleProducts) {
                 TerritoryId = territory.Id,
                 TimePeriodId = tp.Id,
                 AllocationType = allocType,
-                AllocatedQuantity = qty
+                AllocatedQuantity = qty,
+                OwnerId = territoryOwnerId
             ));
             System.debug('INSERT: ' + p.Name + ' / ' + allocType + ' -> ' + qty);
         }
