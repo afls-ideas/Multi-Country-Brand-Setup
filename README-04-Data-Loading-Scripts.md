@@ -11,11 +11,12 @@ flowchart LR
     S3 --> S4["Step 4<br/><b>create-territory-product-alignment.apex</b><br/>12 ProductTerritoryAvailability"]
     S4 --> S5["Step 5<br/><b>create-provider-territory-info.apex</b><br/>Account → Territory visibility"]
     S5 --> S6a["Step 6a<br/><b>create-sample-marketable-products.apex</b><br/>4 sample LifeSciMarketableProduct"]
-    S6a --> S6b["Step 6b<br/><b>Align sample products to territory</b><br/>+ Run alignment batch job"]
+    S6a --> S6b["Step 6b<br/><b>create-sample-territory-alignment.apex</b><br/>+ Run alignment batch job"]
     S6b --> S6c["Step 6c<br/><b>create-sample-inventory.apex</b><br/>4 ProductItem records"]
-    S6c --> S6d["Step 6d<br/><b>create-sample-allocations.apex</b><br/>8 TerritoryProdtQtyAllocation"]
-    S6d --> S6e["Step 6e<br/><b>create-sample-limits.apex</b><br/>ProviderSampleLimit records"]
-    S6e --> S7["Step 7<br/><b>Verify in org</b>"]
+    S6c --> S6d["Step 6d<br/><b>create-sample-production-batches.apex</b><br/>ProductionBatch + ProductBatchItem"]
+    S6d --> S6e["Step 6e<br/><b>create-sample-allocations.apex</b><br/>8 TerritoryProdtQtyAllocation"]
+    S6e --> S6f["Step 6f<br/><b>create-sample-limits.apex</b><br/>ProviderSampleLimit records"]
+    S6f --> S7["Step 7<br/><b>Verify in org</b>"]
 
     style S1 fill:#4a90d9,color:#fff
     style S2 fill:#f5a623,color:#fff
@@ -27,6 +28,7 @@ flowchart LR
     style S6c fill:#2ecc71,color:#fff
     style S6d fill:#2ecc71,color:#fff
     style S6e fill:#2ecc71,color:#fff
+    style S6f fill:#2ecc71,color:#fff
     style S7 fill:#7ed321,color:#fff
 ```
 
@@ -319,13 +321,17 @@ sf apex run --file scripts/create-sample-marketable-products.apex --target-org {
 
 ### Step 6b: Align Sample Products to Territory + Run Alignment Batch
 
-**Manual step (Admin Console UI).** Each sample-level marketable product from Step 6a must be aligned to the rep's territory, then the alignment batch job must run to create `ProductTerrDtlAvailability` (PTDA) records.
+**Script:** `scripts/create-sample-territory-alignment.apex`
 
-1. Go to **Admin Console > Product (tile) > Product Alignment**
-2. For each sample product (e.g., `Cordim GB 5mg`, `Immunexis GB 10mg`), check the box next to the rep's territory (e.g., `GB-FSR-001-London`)
-3. Go to **Product Alignment Jobs** (in the left sidebar) and run the alignment batch job
+Creates `ProductTerritoryAvailability` records for each sample-level marketable product at the **country territory** (e.g., `GB-COUNTRY`) with `Territory and Subordinates Inclusion`.
 
-> **Why is this needed?** The Samples panel uses PTDA records as the master product pool. Step 4 only aligns Brand-level products (e.g., `Immunexis GB`) to the country territory. Sample-level products need their own alignment so the batch job creates sample-level PTDAs. Without PTDAs for sample products, the Samples panel shows "No items found" even if all other data is correct.
+```bash
+sf apex run --file scripts/create-sample-territory-alignment.apex --target-org {your_org}
+```
+
+After running the script, go to **Admin Console > Product (tile) > Product Alignment Jobs** and run the **"Publish Draft Product Territory Alignments Batch Job"** to create `ProductTerrDtlAvailability` (PTDA) records.
+
+> **Critical: Alignment must be at a parent territory with `Territory and Subordinates Inclusion`.** Aligning directly to a leaf territory (e.g., `GB-FSR-001-London`) with `Territory Inclusion` does NOT create PTDA records. The batch job only generates PTDAs when expanding from parent to child territories. Without PTDAs, samples will not appear.
 
 ### Step 6c: Sample Inventory
 
@@ -337,7 +343,17 @@ Creates `ProductItem` records in the rep's inventory location for each sample pr
 sf apex run --file scripts/create-sample-inventory.apex --target-org {your_org}
 ```
 
-### Step 6d: Sample Allocations
+### Step 6d: Production Batches
+
+**Script:** `scripts/create-sample-production-batches.apex`
+
+Creates `ProductionBatch` records (lot/batch with expiry dates) AND `ProductBatchItem` junction records linking each batch to the rep's `ProductItem` inventory. Both are required for the "Production Batch ID" picker to appear during Visit Engagement on mobile.
+
+```bash
+sf apex run --file scripts/create-sample-production-batches.apex --target-org {your_org}
+```
+
+### Step 6e: Sample Allocations
 
 **Script:** `scripts/create-sample-allocations.apex`
 
@@ -347,7 +363,7 @@ Creates `TerritoryProdtQtyAllocation` records — sample quotas for each sample 
 sf apex run --file scripts/create-sample-allocations.apex --target-org {your_org}
 ```
 
-### Step 6e: Sample Limits
+### Step 6f: Sample Limits
 
 **Script:** `scripts/create-sample-limits.apex`
 
@@ -487,7 +503,9 @@ Edit these files and update the corresponding scripts to match, then re-run.
 | `scripts/delete-territories.apex` | Cleanup territories | — | Territory2 |
 | `scripts/delete-provider-territory-info.apex` | Cleanup account-territory | — | ProviderAcctTerritoryInfo + ObjectTerritory2Association |
 | `scripts/create-sample-marketable-products.apex` | Sample-level marketable products | 4 per country | LifeSciMarketableProduct |
+| `scripts/create-sample-territory-alignment.apex` | Sample product → country territory alignment | 4 per country | ProductTerritoryAvailability |
 | `scripts/create-sample-inventory.apex` | Rep inventory items | 4 per rep | ProductItem |
+| `scripts/create-sample-production-batches.apex` | Production batches + inventory links | 8 batches + 8 junction | ProductionBatch + ProductBatchItem |
 | `scripts/create-sample-allocations.apex` | Territory sample quotas | 8 per territory | TerritoryProdtQtyAllocation |
 | `scripts/create-sample-limits.apex` | Account sample limits | N accounts x 2 products | ProviderSampleLimit |
 | `scripts/delete-sample-data.apex` | Cleanup all sample data | — | All sample objects |

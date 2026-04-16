@@ -18,6 +18,8 @@ flowchart TD
         PTA_SAMPLE["ProductTerritoryAvailability<br/>(Sample product → Territory alignment)"]
         BATCH["Alignment Batch Job<br/>(creates ProductTerrDtlAvailability)"]
         PI["ProductItem<br/>(Rep inventory)"]
+        PB["ProductionBatch<br/>(Lot/batch with expiry)"]
+        PBI["ProductBatchItem<br/>(Batch → Inventory junction)"]
         TP["TimePeriod<br/>(Allocation date range)"]
         TPQA["TerritoryProdtQtyAllocation<br/>(Sample quota per territory)"]
         PSLT["ProviderSampleLimitTemplate<br/>(Limit rules)"]
@@ -35,6 +37,9 @@ flowchart TD
     PTA_SAMPLE --> BATCH
     PTA_BRAND --> BATCH
     P2 --> PI
+    P2 --> PB
+    PB --> PBI
+    PI --> PBI
     P2 --> TPQA
     T2 --> TPQA
     TP --> TPQA
@@ -51,6 +56,8 @@ flowchart TD
     style PTA_SAMPLE fill:#e74c3c,color:#fff
     style BATCH fill:#e74c3c,color:#fff
     style PI fill:#2ecc71,color:#fff
+    style PB fill:#2ecc71,color:#fff
+    style PBI fill:#2ecc71,color:#fff
     style TP fill:#2ecc71,color:#fff
     style TPQA fill:#2ecc71,color:#fff
     style PSLT fill:#2ecc71,color:#fff
@@ -72,6 +79,8 @@ flowchart TD
 | **Product Territory Availability (Sample)** | `ProductTerritoryAvailability` | `LifeSciMarketableProduct`, `Territory2` | Aligns each sample-level marketable product to the rep's territory. **Required** — without this, the alignment batch cannot create `ProductTerrDtlAvailability` records, and samples will not appear. |
 | **Product Terr Dtl Availability** | `ProductTerrDtlAvailability` | `LifeSciMarketableProduct`, `Territory2` | Read-only records created by the alignment batch job. The Samples panel uses these as the master product pool for the territory. Cannot be inserted directly. |
 | **Product Item (Rep Inventory)** | `ProductItem` | `Product2`, `Location` | Physical inventory of sample units in the rep's inventory location |
+| **Production Batch** | `ProductionBatch` | `Product2` | Lot/batch record with expiry date. The "Production Batch ID" picker during Visit Engagement requires these. |
+| **Product Batch Item** | `ProductBatchItem` | `ProductionBatch`, `ProductItem` | **Junction** linking a production batch to the rep's inventory. Without this, the batch won't appear in the picker even if the batch exists. |
 | **Provider Visit Requested Sample** | `ProviderVisitRqstSample` | `Product2`, `ProviderVisit` | Runtime record — created when a rep requests a sample during a visit |
 
 > **Key distinction:** `TerritoryProdtQtyAllocation.ProductId` references **Product2** (the sample-level SKU), while `ProviderSampleLimit.ProductId` references **LifeSciMarketableProduct** (the brand-level marketable product).
@@ -275,26 +284,32 @@ Creates 4 records for GB:
 
 Step 4 in the main data loading flow (README-04) creates PTAs for **Brand-level** marketable products only (e.g., Immunexis GB, Cordim GB). For samples, you also need PTAs for the **sample-level** marketable products created in Step 1 above.
 
-**How to align sample products:**
+**Script:** `scripts/create-sample-territory-alignment.apex`
 
-1. Go to **Admin Console > Product (tile) > Product Alignment**
-2. In the **Products** panel, find each sample-level product (e.g., `Cordim GB 5mg`, `Immunexis GB 10mg`)
-3. In the **Territories** panel, check the box next to the rep's territory (e.g., `GB-FSR-001-London`)
-4. After aligning all sample products, go to **Product Alignment Jobs** (in the left sidebar) and run the alignment batch job
+```bash
+sf apex run --file scripts/create-sample-territory-alignment.apex --target-org {your_org}
+```
+
+Creates PTAs at the **country territory** (e.g., `GB-COUNTRY`) with `Territory and Subordinates Inclusion`, so the batch job expands them down to all child FSR territories.
+
+> **Critical: Must use `Territory and Subordinates Inclusion` at a parent territory.** Using `Territory Inclusion` directly at a leaf territory (e.g., `GB-FSR-001-London`) does NOT create PTDA records — the batch job only generates PTDAs when expanding from parent to child territories. This is the most common cause of "samples not appearing."
+
+After creating PTAs, run the alignment batch job:
+
+1. Go to **Admin Console > Product (tile) > Product Alignment Jobs**
+2. Run the **"Publish Draft Product Territory Alignments Batch Job"**
 
 ![Product Alignment page in Admin Console](images/product-alignment.png)
 
-The batch job creates `ProductTerrDtlAvailability` records for each aligned product in the territory. The platform uses PTDAs as the **master product pool** — without them, samples will not appear even if all other data is correct.
-
-> **Why can't this be scripted?** PTA records can be created via Apex (see `scripts/create-territory-product-alignment.apex`), but PTDA records can only be created by the managed package alignment batch job. The batch job is not callable from anonymous Apex — it must be triggered from the Admin Console UI via **Admin Console > Product > Product Alignment Jobs**.
+The batch job creates `ProductTerrDtlAvailability` records for each aligned product in every child territory under `GB-COUNTRY`. The platform uses PTDAs as the **master product pool** — without them, samples will not appear even if all other data is correct.
 
 > **Verifying PTDAs exist:** After the batch job completes, verify with:
-> ```apex
-> SELECT ProductId, Product.Name, SortOrder
+> ```sql
+> SELECT Product.Name, Product.Type, SortOrder
 > FROM ProductTerrDtlAvailability
-> WHERE TerritoryId = '<territory-id>'
+> WHERE Territory.DeveloperName = 'GB_FSR_001_London'
 > ```
-> You should see records for both Brand-level AND sample-level marketable products.
+> You should see records for both Brand-level (Cordim GB, Immunexis GB) AND sample-level (Cordim GB 5mg, etc.) marketable products.
 
 ---
 
@@ -314,7 +329,81 @@ Creates `ProductItem` records with `QuantityOnHand = 1000` for each GB sample pr
 
 ---
 
-### Step 4: TimePeriod
+### Step 4: Production Batches (ProductionBatch + ProductBatchItem)
+
+Production batches represent physical lots of a sample product (with expiry dates). The **"Production Batch ID"** picker during Visit Engagement requires two things:
+
+1. **`ProductionBatch`** records linked to the sample `Product2`
+2. **`ProductBatchItem`** junction records linking each batch to the rep's `ProductItem` (inventory)
+
+Without `ProductBatchItem`, the batch won't appear in the picker even if the `ProductionBatch` exists — the mobile app queries batches **through the rep's inventory**, not directly.
+
+#### How the Mobile App Resolves Production Batches
+
+```mermaid
+flowchart LR
+    subgraph "Rep's Inventory"
+        LOC["Location<br/><i>User Inventory</i>"]
+        PI["ProductItem<br/>Cordim GB 5mg Sample<br/>Qty: 1000"]
+    end
+
+    subgraph "Batch ↔ Inventory Junction"
+        PBI1["ProductBatchItem<br/>Remaining: 500"]
+        PBI2["ProductBatchItem<br/>Remaining: 500"]
+    end
+
+    subgraph "Production Batches"
+        PB1["ProductionBatch<br/><b>PB-0000000015</b><br/>Expires: 2027-04"]
+        PB2["ProductionBatch<br/><b>PB-0000000016</b><br/>Expires: 2028-04"]
+    end
+
+    LOC --> PI
+    PI --> PBI1 --> PB1
+    PI --> PBI2 --> PB2
+
+    style LOC fill:#9b59b6,color:#fff
+    style PI fill:#2ecc71,color:#fff
+    style PBI1 fill:#f5a623,color:#fff
+    style PBI2 fill:#f5a623,color:#fff
+    style PB1 fill:#4a90d9,color:#fff
+    style PB2 fill:#4a90d9,color:#fff
+```
+
+The mobile app starts from the rep's `Location`, finds `ProductItem` records, then follows `ProductBatchItem` to discover which `ProductionBatch` lots are available. If any link in this chain is missing, the "Production Batch ID" picker will be empty.
+
+#### Object Model
+
+```mermaid
+erDiagram
+    Product2 ||--o{ ProductionBatch : "sample product"
+    Product2 ||--o{ ProductItem : "inventory"
+    ProductionBatch ||--o{ ProductBatchItem : "lot"
+    ProductItem ||--o{ ProductBatchItem : "rep inventory"
+    ProductionBatch {
+        Id ProductId FK "Product2 (sample-level)"
+        Boolean IsActive "Must be true"
+        DateTime ExpirationDate "Lot expiry"
+        DateTime BatchCreatedDate "Manufacturing date"
+    }
+    ProductBatchItem {
+        Id ProductionBatchId FK "The lot"
+        Id ProductItemId FK "Rep inventory"
+        Decimal RemainingQuantity "Units left in this lot"
+        Boolean IsActive "Must be true"
+    }
+```
+
+**Script:** `scripts/create-sample-production-batches.apex`
+
+```bash
+sf apex run --file scripts/create-sample-production-batches.apex --target-org {your_org}
+```
+
+Creates 2 batches per sample product (1-year and 2-year expiry) and links each to the rep's `ProductItem` via `ProductBatchItem`.
+
+---
+
+### Step 5: TimePeriod
 
 A `TimePeriod` defines the date range during which sample allocations are valid. The org may already have time periods — check first.
 
@@ -338,7 +427,7 @@ insert tp;
 
 ---
 
-### Step 5: TerritoryProdtQtyAllocation
+### Step 6: TerritoryProdtQtyAllocation
 
 This is the **sample quota** — how many units of each sample product a territory can distribute during the time period.
 
@@ -395,7 +484,7 @@ The script creates **2 allocations per sample product** (Drop + Ship):
 
 ---
 
-### Step 6: ProviderSampleLimitTemplate
+### Step 7: ProviderSampleLimitTemplate
 
 Sample limit templates define the **rules** governing how samples can be distributed. The org has a pre-configured template:
 
@@ -409,7 +498,7 @@ Country-specific templates (Germany AMG, Italy Class A/C, Belgium, etc.) exist b
 
 ---
 
-### Step 7: ProviderSampleLimit
+### Step 8: ProviderSampleLimit
 
 This links an **account** (HCP) to a **marketable product** with a **limit template**, controlling how many samples the HCP can receive.
 
@@ -446,7 +535,7 @@ The script:
 
 ---
 
-### Step 8: Verify Admin Console Settings
+### Step 9: Verify Admin Console Settings
 
 The **Sample Drop** configuration must be active in Admin Console. Verify with Tooling API:
 
@@ -476,9 +565,10 @@ For a sample product to appear in the **Samples** panel during a visit, ALL of t
 
 - [ ] **Brand marketable product aligned to territory**: A `ProductTerritoryAvailability` record links the Brand marketable product (e.g., `Immunexis GB`) to the rep's territory
 - [ ] **Sample-level marketable product exists**: A `LifeSciMarketableProduct` with `Type = 'Product'`, `ParentBrandProductId` → the Brand, `ProductId` → the sample Product2, `DistributionMethod` set, and `ProductSpecificationType = 'LSSampleProduct'` (auto-populated from Product2)
-- [ ] **Sample-level products aligned to territory**: Each sample-level marketable product must have a `ProductTerritoryAvailability` record linking it to the rep's territory (e.g., `Cordim GB 5mg` → `GB-FSR-001-London`)
+- [ ] **Sample-level products aligned to country territory**: Each sample-level marketable product must have a `ProductTerritoryAvailability` record at the **country territory** (e.g., `Cordim GB 5mg` → `GB-COUNTRY`) with `Territory and Subordinates Inclusion`. Do NOT align directly to a leaf territory — this won't create PTDAs.
 - [ ] **Alignment batch job has been run**: After creating PTAs, the alignment batch job must run to create `ProductTerrDtlAvailability` records. **This is the #1 cause of "No items found"** — PTDAs are the master product pool the Samples panel reads from, and they can only be created by the batch job.
 - [ ] **Rep has inventory**: A `ProductItem` record exists in the rep's `Location` (User Inventory) for the sample Product2
+- [ ] **Production batches exist AND are linked to inventory**: `ProductionBatch` records exist for each sample Product2, AND `ProductBatchItem` junction records link them to the rep's `ProductItem`. Without `ProductBatchItem`, the "Production Batch ID" picker will be empty.
 - [ ] **Territory has allocation**: A `TerritoryProdtQtyAllocation` record exists for the sample Product2 in the rep's territory with a current `TimePeriod`
 - [ ] **Allocation OwnerId is the rep**: Under Private sharing, the rep can't see allocations owned by the admin
 - [ ] **Allocated quantity > 0 remaining**: Not all samples already distributed
@@ -499,10 +589,11 @@ flowchart LR
     S3 --> S4["Step 4<br/><b>create-territory-product-alignment</b>"]
     S4 --> S5["Step 5<br/><b>create-provider-territory-info</b>"]
     S5 --> S6a["Step 6a<br/><b>create-sample-marketable-products</b>"]
-    S6a --> S6b["Step 6b<br/><b>Align samples to territory<br/>+ Run alignment batch job</b>"]
+    S6a --> S6b["Step 6b<br/><b>create-sample-territory-alignment</b><br/>+ Run alignment batch job"]
     S6b --> S6c["Step 6c<br/><b>create-sample-inventory</b>"]
-    S6c --> S6d["Step 6d<br/><b>create-sample-allocations</b>"]
-    S6d --> S6e["Step 6e<br/><b>create-sample-limits</b>"]
+    S6c --> S6d["Step 6d<br/><b>create-sample-production-batches</b>"]
+    S6d --> S6e["Step 6e<br/><b>create-sample-allocations</b>"]
+    S6e --> S6f["Step 6f<br/><b>create-sample-limits</b>"]
 
     style S1 fill:#4a90d9,color:#fff
     style S2 fill:#f5a623,color:#fff
@@ -514,6 +605,7 @@ flowchart LR
     style S6c fill:#2ecc71,color:#fff
     style S6d fill:#2ecc71,color:#fff
     style S6e fill:#2ecc71,color:#fff
+    style S6f fill:#2ecc71,color:#fff
 ```
 
 ---
@@ -523,7 +615,9 @@ flowchart LR
 | Script | Creates | Records | Object |
 |--------|---------|---------|--------|
 | `scripts/create-sample-marketable-products.apex` | Sample-level marketable products | 4 per country | LifeSciMarketableProduct |
+| `scripts/create-sample-territory-alignment.apex` | Sample product → country territory alignment | 4 per country | ProductTerritoryAvailability |
 | `scripts/create-sample-inventory.apex` | Rep inventory items | 4 per rep | ProductItem |
+| `scripts/create-sample-production-batches.apex` | Production batches + inventory links | 8 batches + 8 junction | ProductionBatch + ProductBatchItem |
 | `scripts/create-sample-allocations.apex` | Territory sample quotas | 8 (4 products x 2 types) | TerritoryProdtQtyAllocation |
 | `scripts/create-sample-limits.apex` | Account sample limits | N accounts x 2 products | ProviderSampleLimit |
 | `scripts/delete-sample-data.apex` | Cleanup all sample data | — | All of the above |
