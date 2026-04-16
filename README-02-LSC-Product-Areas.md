@@ -242,16 +242,79 @@ Country__c on sample-level Product2 records and on `TerritoryProductQtyAllocatio
 
 When a rep opens the **Product Details** section during Visit Engagement, the platform executes a series of SOQL queries to determine which products to display. Understanding this chain is critical for troubleshooting "No items found" issues.
 
-The following table shows each query in execution order, based on actual debug logs captured from the Visit Engagement component:
+The following queries run in execution order, based on actual debug logs captured from the Visit Engagement component:
 
-| # | Object Queried | SOQL | Rows | Purpose |
-|---|---|---|---|---|
-| 1 | `UserAdditionalInfo` | `SELECT Preference, UserId FROM UserAdditionalInfo WHERE UserId IN (:currentUserId)` | 1 | Loads the current user's preferences (e.g., language, display settings) to personalize the visit experience. |
-| 2 | `ProductTerrDtlAvailability` | `SELECT ProductId, SortOrder FROM ProductTerrDtlAvailability WHERE (SortOrder != null AND RelatedTerritory.Name = '{territory}')` | 0+ | Checks for pre-configured product sort orders for this territory. `ProductTerrDtlAvailability` is a read-only view created by the alignment batch job from `ProductTerritoryAvailability` records. **This query often returns 0 rows** because `SortOrder` is null by default and `RelatedTerritory` may point to the parent territory. However, returning 0 does **not** block products — the platform uses all PTDAs for the territory (queried separately by `TerritoryId`) as the master product pool for downstream queries. The key requirement is that PTDA records **exist**. |
-| 3 | `ApexClass` | `SELECT Id, Name, NamespacePrefix, ApiVersion FROM ApexClass WHERE (Name = 'ClassUtilities' AND NamespacePrefix = 'lsc4ce')` | 1 | Internal framework lookup — loads the LSC managed package utility class used by subsequent processing logic. |
-| 4 | `LifeSciProductAcctRstrc` | `SELECT AccountId, ProductId, Product.Name FROM LifeSciProductAcctRstrc WHERE TerritoryId = null` | 0+ | Loads **global** product-account restrictions (restrictions that apply regardless of territory). If the current account+product combination has a restriction here, the product is excluded from the list. |
-| 5 | `LifeSciProductAcctRstrc` | `SELECT AccountId, ProductId, Product.Name, TerritoryId, Territory.Name FROM LifeSciProductAcctRstrc WHERE Territory.Name = '{territory}'` | 0+ | Loads **territory-specific** product-account restrictions. Same as above but scoped to the rep's territory. Products matching a restriction for this account are removed from the candidate list. |
-| 6 | `LifeSciMarketableProduct` | `SELECT Id, Name, Type, SortOrder, ProductMetadata, IsActive, StartDate, EndDate, ParentTherapeuticAreaId, ParentTherapeuticArea.Name, ParentBrandProductId, ParentProductId, ParentIndicationId, IsCompetitorProduct, SignatureRequirementLevel, DefaultDistributionQuantity FROM LifeSciMarketableProduct WHERE (IsActive = true AND (EndDate = null OR EndDate >= :today) AND (StartDate = null OR StartDate <= :today) AND Id IN (:productIdsFromQuery2) AND Type IN ('Brand','Indication','TherapeuticArea','BrandIndication') AND IsCompetitorProduct = false) ORDER BY SortOrder, Name` | 0+ | **Final filter.** Takes the product IDs from query #2 and applies all display conditions. This is where most "No items found" issues originate. |
+#### Query 1 — `UserAdditionalInfo`
+
+```sql
+SELECT Preference, UserId
+FROM UserAdditionalInfo
+WHERE UserId IN (:currentUserId)
+```
+
+Loads the current user's preferences (e.g., language, display settings) to personalize the visit experience. Returns 1 row.
+
+#### Query 2 — `ProductTerrDtlAvailability`
+
+```sql
+SELECT ProductId, SortOrder
+FROM ProductTerrDtlAvailability
+WHERE SortOrder != null
+  AND RelatedTerritory.Name = '{territory}'
+```
+
+Checks for pre-configured product sort orders for this territory. `ProductTerrDtlAvailability` is a read-only view created by the alignment batch job from `ProductTerritoryAvailability` records. **This query often returns 0 rows** because `SortOrder` is null by default and `RelatedTerritory` may point to the parent territory. However, returning 0 does **not** block products — the platform uses all PTDAs for the territory (queried separately by `TerritoryId`) as the master product pool for downstream queries. The key requirement is that PTDA records **exist**.
+
+#### Query 3 — `ApexClass`
+
+```sql
+SELECT Id, Name, NamespacePrefix, ApiVersion
+FROM ApexClass
+WHERE Name = 'ClassUtilities'
+  AND NamespacePrefix = 'lsc4ce'
+```
+
+Internal framework lookup — loads the LSC managed package utility class. Returns 1 row.
+
+#### Query 4 — `LifeSciProductAcctRstrc` (Global)
+
+```sql
+SELECT AccountId, ProductId, Product.Name
+FROM LifeSciProductAcctRstrc
+WHERE TerritoryId = null
+```
+
+Loads **global** product-account restrictions (restrictions that apply regardless of territory). If the current account+product combination has a restriction here, the product is excluded from the list.
+
+#### Query 5 — `LifeSciProductAcctRstrc` (Territory)
+
+```sql
+SELECT AccountId, ProductId, Product.Name, TerritoryId, Territory.Name
+FROM LifeSciProductAcctRstrc
+WHERE Territory.Name = '{territory}'
+```
+
+Loads **territory-specific** product-account restrictions. Products matching a restriction for this account are removed from the candidate list.
+
+#### Query 6 — `LifeSciMarketableProduct` (Final Filter)
+
+```sql
+SELECT Id, Name, Type, SortOrder, ProductMetadata, IsActive,
+       StartDate, EndDate, ParentTherapeuticAreaId,
+       ParentTherapeuticArea.Name, ParentBrandProductId,
+       ParentProductId, ParentIndicationId, IsCompetitorProduct,
+       SignatureRequirementLevel, DefaultDistributionQuantity
+FROM LifeSciMarketableProduct
+WHERE IsActive = true
+  AND (EndDate = null OR EndDate >= :today)
+  AND (StartDate = null OR StartDate <= :today)
+  AND Id IN (:allPTDAProductIds)
+  AND Type IN ('Brand','Indication','TherapeuticArea','BrandIndication')
+  AND IsCompetitorProduct = false
+ORDER BY SortOrder, Name
+```
+
+**Final filter.** The `Id IN` clause contains **all PTDA ProductIds** for the territory (not just those from Query #2). This is where most "No items found" issues originate.
 
 ### Query #6 Filter Conditions (All Must Pass)
 

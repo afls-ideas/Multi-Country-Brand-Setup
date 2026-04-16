@@ -251,7 +251,7 @@ graph LR
     style TDE fill:#9b59b6,color:#fff
 ```
 
-> **After running the script**, go to **Setup > Product Alignment Jobs** and run the **"Publish Draft Product Territory Alignments Batch Job"**. This is a standard Salesforce step that finalizes PTA records. While the script updates records to Active programmatically, running this job ensures the alignments are fully published and visible across all LSC features.
+> **After running the script**, go to **Admin Console > Product (tile) > Product Alignment Jobs** and run the **"Publish Draft Product Territory Alignments Batch Job"**. This is a standard Salesforce step that finalizes PTA records. While the script updates records to Active programmatically, running this job ensures the alignments are fully published and visible across all LSC features.
 >
 > ![Product Alignment Jobs](images/product-alignment-jobs.png)
 
@@ -321,9 +321,9 @@ sf apex run --file scripts/create-sample-marketable-products.apex --target-org 2
 
 **Manual step (Admin Console UI).** Each sample-level marketable product from Step 6a must be aligned to the rep's territory, then the alignment batch job must run to create `ProductTerrDtlAvailability` (PTDA) records.
 
-1. Go to **Setup > Product Alignment**
+1. Go to **Admin Console > Product (tile) > Product Alignment**
 2. For each sample product (e.g., `Cordim GB 5mg`, `Immunexis GB 10mg`), check the box next to the rep's territory (e.g., `GB-FSR-001-London`)
-3. Run the **alignment batch job** from the Product Alignment page
+3. Go to **Product Alignment Jobs** (in the left sidebar) and run the alignment batch job
 
 > **Why is this needed?** The Samples panel uses PTDA records as the master product pool. Step 4 only aligns Brand-level products (e.g., `Immunexis GB`) to the country territory. Sample-level products need their own alignment so the batch job creates sample-level PTDAs. Without PTDAs for sample products, the Samples panel shows "No items found" even if all other data is correct.
 

@@ -95,20 +95,133 @@ Before setting up samples, you must have:
 
 When a rep opens the **Samples** panel during Visit Engagement, the platform executes a series of SOQL queries to determine which sample products to display. Understanding this chain is critical for troubleshooting "No items found" issues.
 
-| # | Object Queried | SOQL | Rows | Purpose |
-|---|---|---|---|---|
-| 1 | `UserAdditionalInfo` | `SELECT Preference, UserId FROM UserAdditionalInfo WHERE UserId IN (:currentUserId)` | 1 | Loads the current user's preferences (language, display settings) to personalize the visit experience. |
-| 2 | `ProductTerrDtlAvailability` | `SELECT ProductId, SortOrder FROM ProductTerrDtlAvailability WHERE (SortOrder != null AND RelatedTerritory.Name = '{territory}')` | 0+ | Checks for territory-aligned marketable products with sort orders. **This query often returns 0 rows** because `SortOrder` is null by default and `RelatedTerritory` may point to the parent territory (not the leaf). However, returning 0 here does **not** block samples — the platform uses **all PTDAs for the territory** (via `TerritoryId`, regardless of `SortOrder` or `RelatedTerritory.Name`) as the master product pool for downstream queries. The real requirement is that PTDA records **exist** for the sample-level marketable products. |
-| 3 | `ApexClass` | `SELECT Id, Name, NamespacePrefix, ApiVersion FROM ApexClass WHERE (Name = 'ClassUtilities' AND NamespacePrefix = 'lsc4ce')` | 1 | Internal framework lookup — loads the LSC managed package utility class. |
-| 4 | `LifeSciProductAcctRstrc` | `SELECT AccountId, ProductId, Product.Name FROM LifeSciProductAcctRstrc WHERE TerritoryId = null` | 0+ | Loads **global** product-account restrictions. Products matching a restriction are excluded. |
-| 5 | `LifeSciProductAcctRstrc` | `SELECT AccountId, ProductId, Product.Name, TerritoryId, Territory.Name FROM LifeSciProductAcctRstrc WHERE Territory.Name = '{territory}'` | 0+ | Loads **territory-specific** product-account restrictions. |
-| 6 | `LifeSciMarketableProduct` | `SELECT Id, Name, Type, SortOrder, ... FROM LifeSciMarketableProduct WHERE (IsActive = true AND ... AND Id IN (:allPTDAProductIds) AND Type IN ('Brand','Indication','TherapeuticArea','BrandIndication') AND IsCompetitorProduct = false)` | 0+ | Resolves the **Brand-level** marketable products for Product Details. The `Id IN` clause contains **all PTDA ProductIds** for the territory (not just those from Query #2). Returns the parent brands (e.g., Immunexis GB, Cordim GB). |
-| 7 | `LifeSciMarketableProduct` | `SELECT Id, Name, Type, ... FROM LifeSciMarketableProduct WHERE Id IN (:brandIdsFromQuery6)` | 0+ | Re-queries the brand marketable products with full field set including `DistributionMethod` and `DefaultDistributionQuantity`. |
-| 8 | `ProductItem` | `SELECT Id, Product2Id, Product2.Name, ProductName FROM ProductItem WHERE LocationId IN (SELECT Id FROM Location WHERE (PrimaryUserId = :userId AND IsInventoryLocation = true AND LocationType = 'User Inventory'))` | 0+ | **Key query.** Loads the rep's physical inventory. Returns `Product2Id` values for products the rep actually has in stock. If the rep has no `ProductItem` records for sample products, no samples will appear. |
-| 9 | `LifeSciMarketableProduct` | `SELECT Id FROM LifeSciMarketableProduct WHERE (IsCompetitorProduct != true AND Type IN ('Product') AND ParentBrandProductId IN (:brandIdsFromQuery6) AND DistributionMethod IN ('Drop','DropAndShip') AND ProductId IN (:product2IdsFromQuery8) AND ProductSpecificationType IN ('LSSampleProduct'))` | 0+ | **The critical sample filter.** This is where most "No items found" issues originate. ALL conditions must pass — see filter analysis below. |
-| 10 | `Territory2Model` | `SELECT Id FROM Territory2Model WHERE State = 'Active' LIMIT 1` | 1 | Finds the active territory model for subsequent territory lookups. |
-| 11 | `Territory2` | `SELECT Name, DeveloperName, ... FROM Territory2 WHERE (Territory2ModelId = :modelId AND Name = '{territory}')` | 1 | Loads the rep's territory details. |
-| 12 | `ProductItem` | _(same as #8 — re-queried)_ | 0+ | Re-queries inventory (possibly for a different code path). |
+#### Query 1 — `UserAdditionalInfo`
+
+```sql
+SELECT Preference, UserId
+FROM UserAdditionalInfo
+WHERE UserId IN (:currentUserId)
+```
+
+Loads the current user's preferences (language, display settings) to personalize the visit experience. Returns 1 row.
+
+#### Query 2 — `ProductTerrDtlAvailability`
+
+```sql
+SELECT ProductId, SortOrder
+FROM ProductTerrDtlAvailability
+WHERE SortOrder != null
+  AND RelatedTerritory.Name = '{territory}'
+```
+
+Checks for territory-aligned marketable products with sort orders. **This query often returns 0 rows** because `SortOrder` is null by default and `RelatedTerritory` may point to the parent territory (not the leaf). However, returning 0 here does **not** block samples — the platform uses **all PTDAs for the territory** (via `TerritoryId`, regardless of `SortOrder` or `RelatedTerritory.Name`) as the master product pool for downstream queries. The real requirement is that PTDA records **exist** for the sample-level marketable products.
+
+#### Query 3 — `ApexClass`
+
+```sql
+SELECT Id, Name, NamespacePrefix, ApiVersion
+FROM ApexClass
+WHERE Name = 'ClassUtilities'
+  AND NamespacePrefix = 'lsc4ce'
+```
+
+Internal framework lookup — loads the LSC managed package utility class. Returns 1 row.
+
+#### Query 4 — `LifeSciProductAcctRstrc` (Global)
+
+```sql
+SELECT AccountId, ProductId, Product.Name
+FROM LifeSciProductAcctRstrc
+WHERE TerritoryId = null
+```
+
+Loads **global** product-account restrictions. Products matching a restriction are excluded.
+
+#### Query 5 — `LifeSciProductAcctRstrc` (Territory)
+
+```sql
+SELECT AccountId, ProductId, Product.Name, TerritoryId, Territory.Name
+FROM LifeSciProductAcctRstrc
+WHERE Territory.Name = '{territory}'
+```
+
+Loads **territory-specific** product-account restrictions.
+
+#### Query 6 — `LifeSciMarketableProduct` (Brands)
+
+```sql
+SELECT Id, Name, Type, SortOrder, ...
+FROM LifeSciMarketableProduct
+WHERE IsActive = true
+  AND Id IN (:allPTDAProductIds)
+  AND Type IN ('Brand','Indication','TherapeuticArea','BrandIndication')
+  AND IsCompetitorProduct = false
+```
+
+Resolves the **Brand-level** marketable products for Product Details. The `Id IN` clause contains **all PTDA ProductIds** for the territory (not just those from Query #2). Returns the parent brands (e.g., Immunexis GB, Cordim GB).
+
+#### Query 7 — `LifeSciMarketableProduct` (Full Fields)
+
+```sql
+SELECT Id, Name, Type, ...
+FROM LifeSciMarketableProduct
+WHERE Id IN (:brandIdsFromQuery6)
+```
+
+Re-queries the brand marketable products with full field set including `DistributionMethod` and `DefaultDistributionQuantity`.
+
+#### Query 8 — `ProductItem` (Rep Inventory)
+
+```sql
+SELECT Id, Product2Id, Product2.Name, ProductName
+FROM ProductItem
+WHERE LocationId IN (
+    SELECT Id FROM Location
+    WHERE PrimaryUserId = :userId
+      AND IsInventoryLocation = true
+      AND LocationType = 'User Inventory'
+)
+```
+
+**Key query.** Loads the rep's physical inventory. Returns `Product2Id` values for products the rep actually has in stock. If the rep has no `ProductItem` records for sample products, no samples will appear.
+
+#### Query 9 — `LifeSciMarketableProduct` (Sample Filter)
+
+```sql
+SELECT Id
+FROM LifeSciMarketableProduct
+WHERE IsCompetitorProduct != true
+  AND Type IN ('Product')
+  AND ParentBrandProductId IN (:brandIdsFromQuery6)
+  AND DistributionMethod IN ('Drop','DropAndShip')
+  AND ProductId IN (:product2IdsFromQuery8)
+  AND ProductSpecificationType IN ('LSSampleProduct')
+```
+
+**The critical sample filter.** This is where most "No items found" issues originate. ALL conditions must pass — see filter analysis below.
+
+#### Query 10 — `Territory2Model`
+
+```sql
+SELECT Id FROM Territory2Model WHERE State = 'Active' LIMIT 1
+```
+
+Finds the active territory model for subsequent territory lookups.
+
+#### Query 11 — `Territory2`
+
+```sql
+SELECT Name, DeveloperName, ...
+FROM Territory2
+WHERE Territory2ModelId = :modelId
+  AND Name = '{territory}'
+```
+
+Loads the rep's territory details.
+
+#### Query 12 — `ProductItem` (Re-query)
+
+Same as Query 8 — re-queried, possibly for a different code path.
 
 ### Query #9 Filter Conditions (All Must Pass)
 
@@ -164,14 +277,16 @@ Step 4 in the main data loading flow (README-04) creates PTAs for **Brand-level*
 
 **How to align sample products:**
 
-1. Go to **Setup > Product Alignment** in the Admin Console
+1. Go to **Admin Console > Product (tile) > Product Alignment**
 2. In the **Products** panel, find each sample-level product (e.g., `Cordim GB 5mg`, `Immunexis GB 10mg`)
 3. In the **Territories** panel, check the box next to the rep's territory (e.g., `GB-FSR-001-London`)
-4. After aligning all sample products, run the **alignment batch job** (button at top of Product Alignment page)
+4. After aligning all sample products, go to **Product Alignment Jobs** (in the left sidebar) and run the alignment batch job
+
+![Product Alignment page in Admin Console](images/product-alignment.png)
 
 The batch job creates `ProductTerrDtlAvailability` records for each aligned product in the territory. The platform uses PTDAs as the **master product pool** — without them, samples will not appear even if all other data is correct.
 
-> **Why can't this be scripted?** PTA records can be created via Apex (see `scripts/create-territory-product-alignment.apex`), but PTDA records can only be created by the managed package alignment batch job. The batch job is not callable from anonymous Apex — it must be triggered from the Admin Console UI or via the Product Alignment Jobs page.
+> **Why can't this be scripted?** PTA records can be created via Apex (see `scripts/create-territory-product-alignment.apex`), but PTDA records can only be created by the managed package alignment batch job. The batch job is not callable from anonymous Apex — it must be triggered from the Admin Console UI via **Admin Console > Product > Product Alignment Jobs**.
 
 > **Verifying PTDAs exist:** After the batch job completes, verify with:
 > ```apex

@@ -11,8 +11,8 @@
 //
 // Safe to re-run — checks for existing alignment before insert.
 //
-// IMPORTANT: After running this script, go to Setup > Product
-// Alignment Jobs and run "Publish Draft Product Territory
+// IMPORTANT: After running this script, go to Admin Console >
+// Product > Product Alignment Jobs and run "Publish Draft Product Territory
 // Alignments Batch Job" to activate the records and expand
 // them into subordinate territories.
 //
@@ -122,7 +122,7 @@ for (String brandCode : brandCodes) {
 if (!toInsert.isEmpty()) {
     insert toInsert;
     // Records are left as Draft — run the "Publish Draft Product Territory
-    // Alignments Batch Job" in Setup > Product Alignment Jobs to activate
+    // Alignments Batch Job" in Admin Console > Product > Product Alignment Jobs to activate
     // them and expand into subordinate territories.
 }
 
