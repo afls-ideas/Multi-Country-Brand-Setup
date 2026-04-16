@@ -236,6 +236,49 @@ Country__c on sample-level Product2 records and on `TerritoryProductQtyAllocatio
 
 ---
 
+## How Product Details Are Resolved During a Visit
+
+When a rep opens the **Product Details** section during Visit Engagement, the platform executes a series of SOQL queries to determine which products to display. Understanding this chain is critical for troubleshooting "No items found" issues.
+
+The following table shows each query in execution order, based on actual debug logs captured from the Visit Engagement component:
+
+| # | Object Queried | SOQL | Rows | Purpose |
+|---|---|---|---|---|
+| 1 | `UserAdditionalInfo` | `SELECT Preference, UserId FROM UserAdditionalInfo WHERE UserId IN (:currentUserId)` | 1 | Loads the current user's preferences (e.g., language, display settings) to personalize the visit experience. |
+| 2 | `ProductTerrDtlAvailability` | `SELECT ProductId, SortOrder FROM ProductTerrDtlAvailability WHERE (SortOrder != null AND RelatedTerritory.Name = '{territory}')` | 0+ | **Key query.** Checks for pre-configured product sort orders for this territory. `ProductTerrDtlAvailability` is a read-only view that combines `ProductTerritoryAvailability` records with territory hierarchy resolution. The `ProductId` values returned here become the candidate product list for the final query. If this returns 0 rows, no products will display. |
+| 3 | `ApexClass` | `SELECT Id, Name, NamespacePrefix, ApiVersion FROM ApexClass WHERE (Name = 'ClassUtilities' AND NamespacePrefix = 'lsc4ce')` | 1 | Internal framework lookup — loads the LSC managed package utility class used by subsequent processing logic. |
+| 4 | `LifeSciProductAcctRstrc` | `SELECT AccountId, ProductId, Product.Name FROM LifeSciProductAcctRstrc WHERE TerritoryId = null` | 0+ | Loads **global** product-account restrictions (restrictions that apply regardless of territory). If the current account+product combination has a restriction here, the product is excluded from the list. |
+| 5 | `LifeSciProductAcctRstrc` | `SELECT AccountId, ProductId, Product.Name, TerritoryId, Territory.Name FROM LifeSciProductAcctRstrc WHERE Territory.Name = '{territory}'` | 0+ | Loads **territory-specific** product-account restrictions. Same as above but scoped to the rep's territory. Products matching a restriction for this account are removed from the candidate list. |
+| 6 | `LifeSciMarketableProduct` | `SELECT Id, Name, Type, SortOrder, ProductMetadata, IsActive, StartDate, EndDate, ParentTherapeuticAreaId, ParentTherapeuticArea.Name, ParentBrandProductId, ParentProductId, ParentIndicationId, IsCompetitorProduct, SignatureRequirementLevel, DefaultDistributionQuantity FROM LifeSciMarketableProduct WHERE (IsActive = true AND (EndDate = null OR EndDate >= :today) AND (StartDate = null OR StartDate <= :today) AND Id IN (:productIdsFromQuery2) AND Type IN ('Brand','Indication','TherapeuticArea','BrandIndication') AND IsCompetitorProduct = false) ORDER BY SortOrder, Name` | 0+ | **Final filter.** Takes the product IDs from query #2 and applies all display conditions. This is where most "No items found" issues originate. |
+
+### Query #6 Filter Conditions (All Must Pass)
+
+| Condition | What It Checks | Common Failure |
+|---|---|---|
+| `IsActive = true` | Product must be active | Deactivated product |
+| `EndDate = null OR EndDate >= today` | Product must not be expired | Past end date |
+| `StartDate = null OR StartDate <= today` | Product must have started | Future start date |
+| `Id IN (:productIdsFromQuery2)` | Product must be territory-aligned | Missing `ProductTerritoryAvailability` record for the rep's territory |
+| **`Type IN ('Brand','Indication','TherapeuticArea','BrandIndication')`** | **Product must be a Brand-level type** | **Product has `Type = 'Product'` — this is the most common mistake in multi-country setups** |
+| `IsCompetitorProduct = false` | Must not be a competitor product | Flagged as competitor |
+
+### Prerequisites Checklist
+
+For a product to appear in **Product Details** during a visit, ALL of these must be true:
+
+- [ ] **User → Territory**: Rep is assigned to a territory via `UserTerritory2Association`
+- [ ] **Account → Territory**: The visit's account is assigned to the same territory via `ObjectTerritory2Association`
+- [ ] **Product → Territory**: A `ProductTerritoryAvailability` record exists linking the marketable product to the rep's territory (either directly or via "Territory and Subordinates Inclusion" from a parent territory, expanded by the batch job)
+- [ ] **Marketable Product Type = 'Brand'**: The `LifeSciMarketableProduct` record must have `Type = 'Brand'` (not `'Product'`). Product Details shows brand-level groupings, not individual product SKUs
+- [ ] **Marketable Product IsActive = true**: The record must be active
+- [ ] **Marketable Product date range**: `StartDate` ≤ today ≤ `EndDate` (or null)
+- [ ] **Not a competitor**: `IsCompetitorProduct = false`
+- [ ] **No account restriction**: No `LifeSciProductAcctRstrc` record blocking this product for this account/territory
+
+> **Multi-country gotcha:** In a multi-country setup, country sub-brand marketable products (e.g., "Immunexis GB") are typically created with `Type = 'Product'`. For these to appear in Product Details, they must be set to `Type = 'Brand'` — which also requires clearing the `ProductId` field (the platform enforces that `ProductId` can only be set when `Type = 'Product'`). Alternatively, align the parent Brand marketable products (e.g., "Immunexis", "Cordim") to the country territories instead.
+
+---
+
 ## Summary: Where Products Appear
 
 | # | LSC Area | Object(s) | Sub-Brand Used? | Country-Specific? |
