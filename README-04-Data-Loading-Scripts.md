@@ -2,20 +2,22 @@
 
 ## Overview
 
-These Anonymous Apex scripts create the full multi-country product hierarchy and marketable product records in your org. Both scripts are idempotent — safe to re-run without creating duplicates.
+These Anonymous Apex scripts create the full multi-country product hierarchy and marketable product records in your org. All scripts are idempotent — safe to re-run without creating duplicates.
 
 ```mermaid
 flowchart LR
     S1["Step 1<br/><b>create-products.apex</b><br/>38 Product2 records"] --> S2["Step 2<br/><b>create-marketable-products.apex</b><br/>12 LifeSciMarketableProduct"]
     S2 --> S3["Step 3<br/><b>create-territories.apex</b><br/>25 Territory2 records"]
     S3 --> S4["Step 4<br/><b>create-territory-product-alignment.apex</b><br/>12 ProductTerritoryAvailability"]
-    S4 --> S5["Step 5<br/><b>Verify in org</b>"]
+    S4 --> S5["Step 5<br/><b>create-provider-territory-info.apex</b><br/>Account → Territory visibility"]
+    S5 --> S6["Step 6<br/><b>Verify in org</b>"]
 
     style S1 fill:#4a90d9,color:#fff
     style S2 fill:#f5a623,color:#fff
     style S3 fill:#9b59b6,color:#fff
     style S4 fill:#e74c3c,color:#fff
-    style S5 fill:#7ed321,color:#fff
+    style S5 fill:#2ecc71,color:#fff
+    style S6 fill:#7ed321,color:#fff
 ```
 
 **Prerequisites:**
@@ -264,6 +266,33 @@ Because each alignment uses **"Territory and Subordinates Inclusion"**, reps ass
 
 ---
 
+## Step 5: Create Provider Account Territory Info
+
+**Script:** `scripts/create-provider-territory-info.apex`
+
+Creates `ProviderAcctTerritoryInfo` (PATI) records so reps can see accounts in their territory. Without these, LSC features (OMCC, My Accounts, visit planning) show **no accounts** — even if accounts are assigned to the territory.
+
+The script is configurable — edit the variables at the top:
+```apex
+String TERRITORY_DEV_NAME = 'GB_FSR_001_London';  // Target territory
+Integer ACCOUNT_LIMIT = 50;                        // Number of accounts
+```
+
+**Run it:**
+```bash
+sf apex run --file scripts/create-provider-territory-info.apex --target-org 260-pm
+```
+
+**How it works:**
+1. Looks up the target territory
+2. Finds person accounts not already in that territory
+3. Creates `ObjectTerritory2Association` records (account → territory assignment)
+4. Creates `ProviderAcctTerritoryInfo` records with `IsAvailableOffline = true`
+
+> See [README-07: Provider Account Territory Info](README-07-Provider-Account-Territory-Info.md) for full documentation on PATI, how it differs from `ObjectTerritory2Association`, and troubleshooting.
+
+---
+
 ## Expected Output After All Scripts
 
 ```mermaid
@@ -317,7 +346,12 @@ graph TD
 
 ## Cleanup Scripts
 
-Run in reverse order — alignments first, then territories, then marketable products, then products.
+Run in reverse order — PATI first, then alignments, then territories, then marketable products, then products.
+
+### 0. Delete Provider Account Territory Info
+```bash
+sf apex run --file scripts/delete-provider-territory-info.apex --target-org 260-pm
+```
 
 ### 1. Delete Territory-Product Alignments
 ```apex
@@ -375,8 +409,10 @@ Edit these files and update the corresponding scripts to match, then re-run.
 | `scripts/create-marketable-products.apex` | Marketable products | 12 | LifeSciMarketableProduct |
 | `scripts/create-territories.apex` | Territory hierarchy | 25 | Territory2 |
 | `scripts/create-territory-product-alignment.apex` | Product-territory alignment | 12 | ProductTerritoryAvailability |
+| `scripts/create-provider-territory-info.apex` | Account-territory visibility | 50 per territory | ProviderAcctTerritoryInfo + ObjectTerritory2Association |
 | `scripts/delete-products.apex` | Cleanup products | — | Product2 |
 | `scripts/delete-territories.apex` | Cleanup territories | — | Territory2 |
+| `scripts/delete-provider-territory-info.apex` | Cleanup account-territory | — | ProviderAcctTerritoryInfo + ObjectTerritory2Association |
 
 ---
 
@@ -387,3 +423,4 @@ Edit these files and update the corresponding scripts to match, then re-run.
 - [README-03: Country Field Requirements Per Object](README-03-Country-Field-Requirements.md)
 - [README-05: Country Global Value Set](README-05-Country-Global-Value-Set.md)
 - [README-06: Parent-Child Approaches](README-06-Parent-Child-Approaches.md)
+- [README-07: Provider Account Territory Info](README-07-Provider-Account-Territory-Info.md)
