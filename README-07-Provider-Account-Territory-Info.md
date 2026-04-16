@@ -2,9 +2,42 @@
 
 ## What Is ProviderAcctTerritoryInfo?
 
-`ProviderAcctTerritoryInfo` (PATI) is the object that controls which accounts a rep can see in their territory. It is the bridge between an account and a territory for **LSC visit and account management features**.
+`ProviderAcctTerritoryInfo` (PATI) is the **intersection object** between an Account (healthcare provider) and a Territory. It represents how a specific territory views and interacts with a specific account.
 
-Without PATI records, a rep will see **no accounts** — even if the accounts are assigned to their territory via `ObjectTerritory2Association`. This is because LSC features (OMCC, My Accounts, visit planning) filter accounts using:
+```mermaid
+erDiagram
+    Account ||--o{ ProviderAcctTerritoryInfo : "seen by territories"
+    Territory2 ||--o{ ProviderAcctTerritoryInfo : "sees accounts"
+    ProviderAcctTerritoryInfo {
+        Id AccountId FK "The HCP"
+        Id Territory2Id FK "The territory"
+        Boolean IsAvailableOffline "Sync to mobile"
+        Boolean IsTargetedAccount "Priority account"
+        DateTime LastProviderVisitDate "Last visit by THIS territory"
+        DateTime NextProviderVisitDate "Next planned visit"
+        Integer YearToDatePrvdVisitCount "Visit count for THIS territory"
+        Id PreferredAddressId FK "Preferred address for visits"
+    }
+```
+
+### Why This Object Exists
+
+Any data that describes the **relationship between a territory and an account** — rather than the account itself — belongs on PATI. This is the territory's view of the account.
+
+**Example: Last Visit Date.** If you store "Last Visit Date" on the Account, you only know when *someone* last visited — but not which territory or rep. When an account is shared across territories (e.g., a hospital visited by both a cardiology rep and an oncology rep), the Account-level date would be overwritten by whichever rep visited last. On PATI, each territory tracks its own last visit date independently:
+
+| Account | Territory | Last Visit | Next Visit |
+|---------|-----------|------------|------------|
+| Dr. Sarah Chen | GB-FSR-001-London | 2026-04-10 | 2026-04-24 |
+| Dr. Sarah Chen | GB-FSR-004-Edinburgh | 2026-03-15 | 2026-05-01 |
+
+The same principle applies to: targeted account status, preferred visit address, visit counts, and any custom territory-specific fields you add.
+
+> **Rule of thumb:** If the value could differ depending on which rep/territory is looking at the account, it belongs on PATI. If it's a fact about the account itself (NPI number, specialty, address), it belongs on Account.
+
+### How PATI Controls Account Visibility
+
+Without PATI records, a rep will see **no accounts** — even if the accounts are assigned to their territory via `ObjectTerritory2Association`. LSC features (OMCC, My Accounts, visit planning) filter accounts using:
 
 ```sql
 SELECT Id FROM Account
@@ -83,7 +116,7 @@ Integer ACCOUNT_LIMIT = 50;                        // Change this
 
 **Run it:**
 ```bash
-sf apex run --file scripts/create-provider-territory-info.apex --target-org 260-pm
+sf apex run --file scripts/create-provider-territory-info.apex --target-org {your_org}
 ```
 
 **How it works:**
@@ -100,7 +133,7 @@ sf apex run --file scripts/create-provider-territory-info.apex --target-org 260-
 Removes all PATI and OTA records for a territory. Useful for resetting and re-running.
 
 ```bash
-sf apex run --file scripts/delete-provider-territory-info.apex --target-org 260-pm
+sf apex run --file scripts/delete-provider-territory-info.apex --target-org {your_org}
 ```
 
 ---

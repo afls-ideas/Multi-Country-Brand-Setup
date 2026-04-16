@@ -255,7 +255,7 @@ The platform auto-populates `ProductSpecificationType` from `Product2.Specificat
 **Script:** `scripts/create-sample-marketable-products.apex`
 
 ```bash
-sf apex run --file scripts/create-sample-marketable-products.apex --target-org 260-pm
+sf apex run --file scripts/create-sample-marketable-products.apex --target-org {your_org}
 ```
 
 Creates 4 records for GB:
@@ -305,7 +305,7 @@ The rep must have physical inventory of the sample products. The platform checks
 **Script:** `scripts/create-sample-inventory.apex`
 
 ```bash
-sf apex run --file scripts/create-sample-inventory.apex --target-org 260-pm
+sf apex run --file scripts/create-sample-inventory.apex --target-org {your_org}
 ```
 
 Creates `ProductItem` records with `QuantityOnHand = 1000` for each GB sample product in the rep's inventory location.
@@ -342,6 +342,22 @@ insert tp;
 
 This is the **sample quota** — how many units of each sample product a territory can distribute during the time period.
 
+```mermaid
+erDiagram
+    TerritoryProdtQtyAllocation {
+        Id ProductId FK "Product2 (sample-level)"
+        Id TerritoryId FK "Territory2"
+        Id TimePeriodId FK "TimePeriod"
+        Picklist AllocationType "Drop | Ship"
+        Number AllocatedQuantity "Total units available"
+        Id OwnerId FK "User (must be the rep)"
+        Number MaxDisbursementLimitQty "Max per transaction"
+    }
+    Product2 ||--o{ TerritoryProdtQtyAllocation : "sample product"
+    Territory2 ||--o{ TerritoryProdtQtyAllocation : "rep territory"
+    TimePeriod ||--o{ TerritoryProdtQtyAllocation : "date range"
+```
+
 **Key fields:**
 
 | Field | Type | Description |
@@ -359,7 +375,7 @@ This is the **sample quota** — how many units of each sample product a territo
 Creates allocation records for all GB sample products in the target territory:
 
 ```bash
-sf apex run --file scripts/create-sample-allocations.apex --target-org 260-pm
+sf apex run --file scripts/create-sample-allocations.apex --target-org {your_org}
 ```
 
 The script creates **2 allocations per sample product** (Drop + Ship):
@@ -405,12 +421,22 @@ This links an **account** (HCP) to a **marketable product** with a **limit templ
 | `ProductId` | Lookup(LifeSciMarketableProduct) | The **brand-level** marketable product (e.g., `Immunexis GB`) |
 | `PrvdSampleLimitTemplateId` | Lookup(ProviderSampleLimitTemplate) | The active limit template |
 
+**Example record:**
+
+| Field | Value |
+|-------|-------|
+| `AccountId` | Dr. Sarah Chen (HCP in GB-FSR-001-London) |
+| `ProductId` | Immunexis GB (LifeSciMarketableProduct, Type = Brand) |
+| `PrvdSampleLimitTemplateId` | Generic Template |
+
+> **Note:** `ProductId` on `ProviderSampleLimit` points to the **Brand-level** marketable product, not the sample-level Product2. The template controls limits across all sample SKUs under that brand.
+
 **Script:** `scripts/create-sample-limits.apex`
 
 Creates sample limit records for GB accounts in the London territory:
 
 ```bash
-sf apex run --file scripts/create-sample-limits.apex --target-org 260-pm
+sf apex run --file scripts/create-sample-limits.apex --target-org {your_org}
 ```
 
 The script:
@@ -427,7 +453,7 @@ The **Sample Drop** configuration must be active in Admin Console. Verify with T
 ```bash
 sf data query --use-tooling-api \
   --query "SELECT Id, DeveloperName, MasterLabel, IsActive FROM LifeSciConfigRecord WHERE DeveloperName = 'Sample_Drop'" \
-  --api-version 65.0 --target-org 260-pm
+  --api-version 65.0 --target-org {your_org}
 ```
 
 Expected result: `Sample_Drop` is **active**.
@@ -437,7 +463,7 @@ Also verify the DB Schema records exist:
 ```bash
 sf data query --use-tooling-api \
   --query "SELECT Id, DeveloperName, IsActive FROM LifeSciConfigRecord WHERE DeveloperName IN ('DbSchema_ProviderSampleLimit', 'DbSchema_TerritoryProdtQtyAllocation')" \
-  --api-version 65.0 --target-org 260-pm
+  --api-version 65.0 --target-org {your_org}
 ```
 
 Both should be active.
@@ -507,7 +533,7 @@ flowchart LR
 ## Cleanup
 
 ```bash
-sf apex run --file scripts/delete-sample-data.apex --target-org 260-pm
+sf apex run --file scripts/delete-sample-data.apex --target-org {your_org}
 ```
 
 Deletes `TerritoryProdtQtyAllocation` and `ProviderSampleLimit` records for the target territory and GB products.

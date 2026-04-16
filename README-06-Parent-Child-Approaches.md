@@ -22,9 +22,9 @@ graph TD
 
 ## What It Looks Like in the Org
 
-The screenshot below shows the **All Products** list view in the 260-pm org after running `scripts/create-products.apex`. Notice the three Product Family values (Brand, Sub-Brand, Sample) and the ProductCode naming convention that encodes the hierarchy.
+The screenshot below shows the **All Products** list view after running `scripts/create-products.apex`. Notice the three Product Family values (Brand, Sub-Brand, Sample) and the ProductCode naming convention that encodes the hierarchy.
 
-![Product List View — All Products in 260-pm](images/product-list-view.png)
+![Product List View — All Products](images/product-list-view.png)
 
 > **Key observations:**
 > - **Brands** (e.g., `IMMUNEXIS`) have no country suffix and Family = Brand
@@ -176,8 +176,8 @@ update products;
 
 | Component | Path | Status |
 |-----------|------|--------|
-| ParentProduct__c field | `force-app/main/default/objects/Product2/fields/ParentProduct__c.field-meta.xml` | Deployed to 260-pm |
-| Permission Set (FLS) | `force-app/main/default/permissionsets/Multi_Country_Brand_Admin.permissionset-meta.xml` | Deployed to 260-pm |
+| ParentProduct__c field | `force-app/main/default/objects/Product2/fields/ParentProduct__c.field-meta.xml` | Deployed |
+| Permission Set (FLS) | `force-app/main/default/permissionsets/Multi_Country_Brand_Admin.permissionset-meta.xml` | Deployed |
 | Create script | `scripts/create-products.apex` | Uses ParentProduct__c by default |
 | Delete script | `scripts/delete-products.apex` | No change needed |
 

@@ -53,7 +53,7 @@ Creates 38 Product2 records in a three-level hierarchy:
 
 **Run it:**
 ```bash
-sf apex run --file scripts/create-products.apex --target-org 260-pm
+sf apex run --file scripts/create-products.apex --target-org {your_org}
 ```
 
 **How it works:**
@@ -87,7 +87,7 @@ Each record is:
 
 **Run it:**
 ```bash
-sf apex run --file scripts/create-marketable-products.apex --target-org 260-pm
+sf apex run --file scripts/create-marketable-products.apex --target-org {your_org}
 ```
 
 **How it works:**
@@ -153,7 +153,7 @@ All territories have `AccountAccessLevel = Edit` (view and edit for accounts).
 
 **Run it:**
 ```bash
-sf apex run --file scripts/create-territories.apex --target-org 260-pm
+sf apex run --file scripts/create-territories.apex --target-org {your_org}
 ```
 
 **How it works:**
@@ -220,7 +220,7 @@ Creates 12 `ProductTerritoryAvailability` records — one per country marketable
 
 **Run it:**
 ```bash
-sf apex run --file scripts/create-territory-product-alignment.apex --target-org 260-pm
+sf apex run --file scripts/create-territory-product-alignment.apex --target-org {your_org}
 ```
 
 **How it works:**
@@ -292,7 +292,7 @@ Integer ACCOUNT_LIMIT = 50;                        // Number of accounts
 
 **Run it:**
 ```bash
-sf apex run --file scripts/create-provider-territory-info.apex --target-org 260-pm
+sf apex run --file scripts/create-provider-territory-info.apex --target-org {your_org}
 ```
 
 **How it works:**
@@ -314,7 +314,7 @@ sf apex run --file scripts/create-provider-territory-info.apex --target-org 260-
 Creates sample-level `LifeSciMarketableProduct` records with `Type = 'Product'`, `DistributionMethod = 'DropAndShip'`, and `ProductSpecificationType = 'LSSampleProduct'` (auto-populated). These are required for the Samples panel during Visit Engagement.
 
 ```bash
-sf apex run --file scripts/create-sample-marketable-products.apex --target-org 260-pm
+sf apex run --file scripts/create-sample-marketable-products.apex --target-org {your_org}
 ```
 
 ### Step 6b: Align Sample Products to Territory + Run Alignment Batch
@@ -334,7 +334,7 @@ sf apex run --file scripts/create-sample-marketable-products.apex --target-org 2
 Creates `ProductItem` records in the rep's inventory location for each sample product.
 
 ```bash
-sf apex run --file scripts/create-sample-inventory.apex --target-org 260-pm
+sf apex run --file scripts/create-sample-inventory.apex --target-org {your_org}
 ```
 
 ### Step 6d: Sample Allocations
@@ -344,7 +344,7 @@ sf apex run --file scripts/create-sample-inventory.apex --target-org 260-pm
 Creates `TerritoryProdtQtyAllocation` records — sample quotas for each sample product in the target territory.
 
 ```bash
-sf apex run --file scripts/create-sample-allocations.apex --target-org 260-pm
+sf apex run --file scripts/create-sample-allocations.apex --target-org {your_org}
 ```
 
 ### Step 6e: Sample Limits
@@ -354,7 +354,7 @@ sf apex run --file scripts/create-sample-allocations.apex --target-org 260-pm
 Creates `ProviderSampleLimit` records linking accounts to marketable products with a sample limit template.
 
 ```bash
-sf apex run --file scripts/create-sample-limits.apex --target-org 260-pm
+sf apex run --file scripts/create-sample-limits.apex --target-org {your_org}
 ```
 
 > See [README-08: Sample Management Setup](README-08-Sample-Management-Setup.md) for full documentation on the sample SOQL resolution chain, object relationships, and troubleshooting.
@@ -418,12 +418,12 @@ Run in reverse order — sample data first, then PATI, then alignments, then ter
 
 ### 0a. Delete Sample Data
 ```bash
-sf apex run --file scripts/delete-sample-data.apex --target-org 260-pm
+sf apex run --file scripts/delete-sample-data.apex --target-org {your_org}
 ```
 
 ### 0b. Delete Provider Account Territory Info
 ```bash
-sf apex run --file scripts/delete-provider-territory-info.apex --target-org 260-pm
+sf apex run --file scripts/delete-provider-territory-info.apex --target-org {your_org}
 ```
 
 ### 1. Delete Territory-Product Alignments
@@ -439,7 +439,7 @@ System.debug('Territory-product alignments deleted.');
 
 ### 2. Delete Territories
 ```bash
-sf apex run --file scripts/delete-territories.apex --target-org 260-pm
+sf apex run --file scripts/delete-territories.apex --target-org {your_org}
 ```
 
 Deletes in reverse order: Cities → Countries → GLOBAL.
@@ -456,7 +456,7 @@ System.debug('Country marketable products deleted.');
 
 ### 4. Delete Product2 Records
 ```bash
-sf apex run --file scripts/delete-products.apex --target-org 260-pm
+sf apex run --file scripts/delete-products.apex --target-org {your_org}
 ```
 
 Deletes in reverse hierarchy order: Samples → Sub-Brands → Brands.
