@@ -312,3 +312,4 @@ For a product to appear in **Product Details** during a visit, ALL of these must
 - [README-05: Country Global Value Set](README-05-Country-Global-Value-Set.md)
 - [README-06: Parent-Child Approaches](README-06-Parent-Child-Approaches.md)
 - [README-07: Provider Account Territory Info](README-07-Provider-Account-Territory-Info.md)
+- [README-08: Sample Management Setup](README-08-Sample-Management-Setup.md)

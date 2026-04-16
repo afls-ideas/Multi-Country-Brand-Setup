@@ -191,3 +191,4 @@ update products;
 - [README-04: Data Loading Scripts](README-04-Data-Loading-Scripts.md)
 - [README-05: Country Global Value Set](README-05-Country-Global-Value-Set.md)
 - [README-07: Provider Account Territory Info](README-07-Provider-Account-Territory-Info.md)
+- [README-08: Sample Management Setup](README-08-Sample-Management-Setup.md)

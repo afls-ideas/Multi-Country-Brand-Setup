@@ -10,14 +10,18 @@ flowchart LR
     S2 --> S3["Step 3<br/><b>create-territories.apex</b><br/>25 Territory2 records"]
     S3 --> S4["Step 4<br/><b>create-territory-product-alignment.apex</b><br/>12 ProductTerritoryAvailability"]
     S4 --> S5["Step 5<br/><b>create-provider-territory-info.apex</b><br/>Account → Territory visibility"]
-    S5 --> S6["Step 6<br/><b>Verify in org</b>"]
+    S5 --> S6a["Step 6a<br/><b>create-sample-allocations.apex</b><br/>8 TerritoryProdtQtyAllocation"]
+    S6a --> S6b["Step 6b<br/><b>create-sample-limits.apex</b><br/>ProviderSampleLimit records"]
+    S6b --> S7["Step 7<br/><b>Verify in org</b>"]
 
     style S1 fill:#4a90d9,color:#fff
     style S2 fill:#f5a623,color:#fff
     style S3 fill:#9b59b6,color:#fff
     style S4 fill:#e74c3c,color:#fff
     style S5 fill:#2ecc71,color:#fff
-    style S6 fill:#7ed321,color:#fff
+    style S6a fill:#2ecc71,color:#fff
+    style S6b fill:#2ecc71,color:#fff
+    style S7 fill:#7ed321,color:#fff
 ```
 
 **Prerequisites:**
@@ -293,6 +297,42 @@ sf apex run --file scripts/create-provider-territory-info.apex --target-org 260-
 
 ---
 
+## Step 6: Create Sample Management Data
+
+### Step 6a: Sample Allocations
+
+**Script:** `scripts/create-sample-allocations.apex`
+
+Creates `TerritoryProdtQtyAllocation` records — sample quotas for each sample product in the target territory.
+
+```bash
+sf apex run --file scripts/create-sample-allocations.apex --target-org 260-pm
+```
+
+**How it works:**
+1. Looks up the target territory and sample-level Product2 records for the country
+2. Finds a current TimePeriod covering today
+3. Creates 2 allocations per sample product (Drop + Ship)
+
+### Step 6b: Sample Limits
+
+**Script:** `scripts/create-sample-limits.apex`
+
+Creates `ProviderSampleLimit` records linking accounts to marketable products with a sample limit template.
+
+```bash
+sf apex run --file scripts/create-sample-limits.apex --target-org 260-pm
+```
+
+**How it works:**
+1. Finds accounts in the territory (via ProviderAcctTerritoryInfo)
+2. Finds country-level Brand marketable products
+3. Creates a limit record per account × product using the Generic Template
+
+> See [README-08: Sample Management Setup](README-08-Sample-Management-Setup.md) for full documentation on the sample management object chain and prerequisites.
+
+---
+
 ## Expected Output After All Scripts
 
 ```mermaid
@@ -346,9 +386,14 @@ graph TD
 
 ## Cleanup Scripts
 
-Run in reverse order — PATI first, then alignments, then territories, then marketable products, then products.
+Run in reverse order — sample data first, then PATI, then alignments, then territories, then marketable products, then products.
 
-### 0. Delete Provider Account Territory Info
+### 0a. Delete Sample Data
+```bash
+sf apex run --file scripts/delete-sample-data.apex --target-org 260-pm
+```
+
+### 0b. Delete Provider Account Territory Info
 ```bash
 sf apex run --file scripts/delete-provider-territory-info.apex --target-org 260-pm
 ```
@@ -413,6 +458,9 @@ Edit these files and update the corresponding scripts to match, then re-run.
 | `scripts/delete-products.apex` | Cleanup products | — | Product2 |
 | `scripts/delete-territories.apex` | Cleanup territories | — | Territory2 |
 | `scripts/delete-provider-territory-info.apex` | Cleanup account-territory | — | ProviderAcctTerritoryInfo + ObjectTerritory2Association |
+| `scripts/create-sample-allocations.apex` | Territory sample quotas | 8 per territory | TerritoryProdtQtyAllocation |
+| `scripts/create-sample-limits.apex` | Account sample limits | N accounts x 2 products | ProviderSampleLimit |
+| `scripts/delete-sample-data.apex` | Cleanup sample data | — | TerritoryProdtQtyAllocation + ProviderSampleLimit |
 
 ---
 
@@ -424,3 +472,4 @@ Edit these files and update the corresponding scripts to match, then re-run.
 - [README-05: Country Global Value Set](README-05-Country-Global-Value-Set.md)
 - [README-06: Parent-Child Approaches](README-06-Parent-Child-Approaches.md)
 - [README-07: Provider Account Territory Info](README-07-Provider-Account-Territory-Info.md)
+- [README-08: Sample Management Setup](README-08-Sample-Management-Setup.md)
