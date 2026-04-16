@@ -58,7 +58,9 @@ graph LR
 
 **What it does:** Determines which products appear in the rep's product list on mobile and web. Each marketable product record ties a specific Product2 to a territory.
 
-**Multi-country impact:** Each country's territory gets marketable product records pointing to that country's sub-brands only. A US rep sees Immunexis US; a DE rep sees Immunexis DE. Country__c on this object enables filtering and validation.
+**Multi-country impact:** Each country's territory gets marketable product records for that country's brands. A US rep sees Immunexis US; a DE rep sees Immunexis DE. Country__c on this object enables filtering and validation.
+
+> **Important:** For products to appear in the **Product Details** section during Visit Engagement, the marketable product must have `Type = 'Brand'` (not `'Product'`). Setting `Type = 'Brand'` requires `ProductId` to be null. See [How Product Details Are Resolved](#how-product-details-are-resolved-during-a-visit) for the full query chain.
 
 ---
 

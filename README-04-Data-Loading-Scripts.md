@@ -58,7 +58,7 @@ sf apex run --file scripts/create-products.apex --target-org 260-pm
 
 **Script:** `scripts/create-marketable-products.apex`
 
-Creates 12 LifeSciMarketableProduct records — one per brand per country. These make the country-level sub-brands visible across LSC features (territory alignment, call discussions, product priorities, etc.).
+Creates 12 LifeSciMarketableProduct records — one per brand per country. These make the country-level brands visible in Product Details during Visit Engagement, territory alignment, call discussions, product priorities, etc.
 
 | Brand | Records | Parent Brand (via ParentBrandProductId) |
 |-------|---------|----------------------------------------|
@@ -66,9 +66,12 @@ Creates 12 LifeSciMarketableProduct records — one per brand per country. These
 | Cordim | 6 (US, GB, FR, IT, ES, DE) | Existing "Cordim" Brand marketable product |
 
 Each record is:
-- Linked to its **Product2 sub-brand** via `ProductId`
+- Created with **`Type = 'Brand'`** so it appears in the Product Details section during visits
 - Parented under the **Brand marketable product** via `ParentBrandProductId`
 - Tagged with `Country__c`
+- **No `ProductId` link** — the platform requires `ProductId = null` when `Type = 'Brand'`
+
+> **Why `Type = 'Brand'`?** The Visit Engagement component filters detailable products with `Type IN ('Brand','Indication','TherapeuticArea','BrandIndication')`. Records with `Type = 'Product'` are excluded from Product Details. See [README-02 — How Product Details Are Resolved](README-02-LSC-Product-Areas.md#how-product-details-are-resolved-during-a-visit) for the full SOQL resolution chain.
 
 **Run it:**
 ```bash
@@ -77,9 +80,8 @@ sf apex run --file scripts/create-marketable-products.apex --target-org 260-pm
 
 **How it works:**
 1. Looks up existing Brand-type LifeSciMarketableProduct records for Immunexis and Cordim
-2. Looks up Product2 sub-brand records (Family = Sub-Brand)
-3. Queries existing LifeSciMarketableProduct records by ProductCode (idempotency key)
-4. Inserts new records or updates existing ones
+2. Queries existing LifeSciMarketableProduct records by ProductCode (idempotency key)
+3. Inserts new records (or updates existing) with `Type = 'Brand'` and `ProductId = null`
 
 ```mermaid
 graph TD
@@ -87,24 +89,16 @@ graph TD
         B1["Immunexis<br/><i>Type: Brand</i>"]
         B2["Cordim<br/><i>Type: Brand</i>"]
 
-        B1 --> M1["Immunexis US<br/><i>Type: Product</i>"]
-        B1 --> M2["Immunexis GB<br/><i>Type: Product</i>"]
-        B1 --> M3["Immunexis FR<br/><i>Type: Product</i>"]
+        B1 --> M1["Immunexis US<br/><i>Type: Brand</i>"]
+        B1 --> M2["Immunexis GB<br/><i>Type: Brand</i>"]
+        B1 --> M3["Immunexis FR<br/><i>Type: Brand</i>"]
         B1 --> M4["...IT, ES, DE"]
 
-        B2 --> M5["Cordim US<br/><i>Type: Product</i>"]
-        B2 --> M6["Cordim GB<br/><i>Type: Product</i>"]
-        B2 --> M7["Cordim FR<br/><i>Type: Product</i>"]
+        B2 --> M5["Cordim US<br/><i>Type: Brand</i>"]
+        B2 --> M6["Cordim GB<br/><i>Type: Brand</i>"]
+        B2 --> M7["Cordim FR<br/><i>Type: Brand</i>"]
         B2 --> M8["...IT, ES, DE"]
     end
-
-    subgraph "Product2"
-        P1["Immunexis US<br/><i>Family: Sub-Brand</i>"]
-        P2["Cordim US<br/><i>Family: Sub-Brand</i>"]
-    end
-
-    M1 -.->|ProductId| P1
-    M5 -.->|ProductId| P2
 
     style B1 fill:#4a90d9,color:#fff
     style B2 fill:#4a90d9,color:#fff
@@ -116,8 +110,6 @@ graph TD
     style M6 fill:#f5a623,color:#fff
     style M7 fill:#f5a623,color:#fff
     style M8 fill:#f5a623,color:#fff
-    style P1 fill:#7ed321,color:#fff
-    style P2 fill:#7ed321,color:#fff
 ```
 
 ---
