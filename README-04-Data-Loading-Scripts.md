@@ -11,10 +11,11 @@ flowchart LR
     S3 --> S4["Step 4<br/><b>create-territory-product-alignment.apex</b><br/>12 ProductTerritoryAvailability"]
     S4 --> S5["Step 5<br/><b>create-provider-territory-info.apex</b><br/>Account → Territory visibility"]
     S5 --> S6a["Step 6a<br/><b>create-sample-marketable-products.apex</b><br/>4 sample LifeSciMarketableProduct"]
-    S6a --> S6b["Step 6b<br/><b>create-sample-inventory.apex</b><br/>4 ProductItem records"]
-    S6b --> S6c["Step 6c<br/><b>create-sample-allocations.apex</b><br/>8 TerritoryProdtQtyAllocation"]
-    S6c --> S6d["Step 6d<br/><b>create-sample-limits.apex</b><br/>ProviderSampleLimit records"]
-    S6d --> S7["Step 7<br/><b>Verify in org</b>"]
+    S6a --> S6b["Step 6b<br/><b>Align sample products to territory</b><br/>+ Run alignment batch job"]
+    S6b --> S6c["Step 6c<br/><b>create-sample-inventory.apex</b><br/>4 ProductItem records"]
+    S6c --> S6d["Step 6d<br/><b>create-sample-allocations.apex</b><br/>8 TerritoryProdtQtyAllocation"]
+    S6d --> S6e["Step 6e<br/><b>create-sample-limits.apex</b><br/>ProviderSampleLimit records"]
+    S6e --> S7["Step 7<br/><b>Verify in org</b>"]
 
     style S1 fill:#4a90d9,color:#fff
     style S2 fill:#f5a623,color:#fff
@@ -22,9 +23,10 @@ flowchart LR
     style S4 fill:#e74c3c,color:#fff
     style S5 fill:#2ecc71,color:#fff
     style S6a fill:#2ecc71,color:#fff
-    style S6b fill:#2ecc71,color:#fff
+    style S6b fill:#e74c3c,color:#fff
     style S6c fill:#2ecc71,color:#fff
     style S6d fill:#2ecc71,color:#fff
+    style S6e fill:#2ecc71,color:#fff
     style S7 fill:#7ed321,color:#fff
 ```
 
@@ -272,6 +274,8 @@ After the batch job completes, 12 `ProductTerritoryAvailability` records are cre
 
 Because each alignment uses **"Territory and Subordinates Inclusion"**, reps assigned to any city FSR territory (e.g., `GB-FSR-001-London`) automatically see the country's products (Immunexis GB, Cordim GB) without needing separate alignments per city.
 
+> **For Sample Management:** This step only aligns **Brand-level** marketable products. If you're setting up samples (Step 6), the sample-level marketable products also need separate territory alignment — see [Step 6b](#step-6b-align-sample-products-to-territory--run-alignment-batch).
+
 ---
 
 ## Step 5: Create Provider Account Territory Info
@@ -313,7 +317,17 @@ Creates sample-level `LifeSciMarketableProduct` records with `Type = 'Product'`,
 sf apex run --file scripts/create-sample-marketable-products.apex --target-org 260-pm
 ```
 
-### Step 6b: Sample Inventory
+### Step 6b: Align Sample Products to Territory + Run Alignment Batch
+
+**Manual step (Admin Console UI).** Each sample-level marketable product from Step 6a must be aligned to the rep's territory, then the alignment batch job must run to create `ProductTerrDtlAvailability` (PTDA) records.
+
+1. Go to **Setup > Product Alignment**
+2. For each sample product (e.g., `Cordim GB 5mg`, `Immunexis GB 10mg`), check the box next to the rep's territory (e.g., `GB-FSR-001-London`)
+3. Run the **alignment batch job** from the Product Alignment page
+
+> **Why is this needed?** The Samples panel uses PTDA records as the master product pool. Step 4 only aligns Brand-level products (e.g., `Immunexis GB`) to the country territory. Sample-level products need their own alignment so the batch job creates sample-level PTDAs. Without PTDAs for sample products, the Samples panel shows "No items found" even if all other data is correct.
+
+### Step 6c: Sample Inventory
 
 **Script:** `scripts/create-sample-inventory.apex`
 
@@ -323,7 +337,7 @@ Creates `ProductItem` records in the rep's inventory location for each sample pr
 sf apex run --file scripts/create-sample-inventory.apex --target-org 260-pm
 ```
 
-### Step 6c: Sample Allocations
+### Step 6d: Sample Allocations
 
 **Script:** `scripts/create-sample-allocations.apex`
 
@@ -333,7 +347,7 @@ Creates `TerritoryProdtQtyAllocation` records — sample quotas for each sample 
 sf apex run --file scripts/create-sample-allocations.apex --target-org 260-pm
 ```
 
-### Step 6d: Sample Limits
+### Step 6e: Sample Limits
 
 **Script:** `scripts/create-sample-limits.apex`
 

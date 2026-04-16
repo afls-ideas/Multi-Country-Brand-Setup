@@ -10,11 +10,13 @@ flowchart TD
         P2["Product2<br/>(Sample-level records)"]
         T2["Territory2<br/>(Rep territories)"]
         MKT_BRAND["LifeSciMarketableProduct<br/>Type = Brand<br/>(Country brands)"]
-        PTA["ProductTerritoryAvailability<br/>(Brand → Territory alignment)"]
+        PTA_BRAND["ProductTerritoryAvailability<br/>(Brand → Territory alignment)"]
     end
 
     subgraph "Sample Setup (this README)"
         MKT_PROD["LifeSciMarketableProduct<br/>Type = Product<br/>(Sample-level, with DistributionMethod)"]
+        PTA_SAMPLE["ProductTerritoryAvailability<br/>(Sample product → Territory alignment)"]
+        BATCH["Alignment Batch Job<br/>(creates ProductTerrDtlAvailability)"]
         PI["ProductItem<br/>(Rep inventory)"]
         TP["TimePeriod<br/>(Allocation date range)"]
         TPQA["TerritoryProdtQtyAllocation<br/>(Sample quota per territory)"]
@@ -28,6 +30,10 @@ flowchart TD
 
     P2 --> MKT_PROD
     MKT_BRAND --> MKT_PROD
+    MKT_PROD --> PTA_SAMPLE
+    T2 --> PTA_SAMPLE
+    PTA_SAMPLE --> BATCH
+    PTA_BRAND --> BATCH
     P2 --> PI
     P2 --> TPQA
     T2 --> TPQA
@@ -41,7 +47,9 @@ flowchart TD
     style T2 fill:#9b59b6,color:#fff
     style MKT_BRAND fill:#f5a623,color:#fff
     style MKT_PROD fill:#f5a623,color:#fff
-    style PTA fill:#e74c3c,color:#fff
+    style PTA_BRAND fill:#e74c3c,color:#fff
+    style PTA_SAMPLE fill:#e74c3c,color:#fff
+    style BATCH fill:#e74c3c,color:#fff
     style PI fill:#2ecc71,color:#fff
     style TP fill:#2ecc71,color:#fff
     style TPQA fill:#2ecc71,color:#fff
@@ -61,6 +69,8 @@ flowchart TD
 | **Provider Sample Limit Template** | `ProviderSampleLimitTemplate` | — | Defines the rules/limits for sample distribution (e.g., country-specific compliance rules) |
 | **Provider Sample Limit** | `ProviderSampleLimit` | `LifeSciMarketableProduct`, `Account`, `ProviderSampleLimitTemplate` | Account-level limit — controls how many samples an HCP can receive |
 | **Marketable Product (Sample-level)** | `LifeSciMarketableProduct` | `Product2`, parent `LifeSciMarketableProduct` | Sample-level marketable product with `Type = 'Product'`, `DistributionMethod`, and `ProductSpecificationType = 'LSSampleProduct'` |
+| **Product Territory Availability (Sample)** | `ProductTerritoryAvailability` | `LifeSciMarketableProduct`, `Territory2` | Aligns each sample-level marketable product to the rep's territory. **Required** — without this, the alignment batch cannot create `ProductTerrDtlAvailability` records, and samples will not appear. |
+| **Product Terr Dtl Availability** | `ProductTerrDtlAvailability` | `LifeSciMarketableProduct`, `Territory2` | Read-only records created by the alignment batch job. The Samples panel uses these as the master product pool for the territory. Cannot be inserted directly. |
 | **Product Item (Rep Inventory)** | `ProductItem` | `Product2`, `Location` | Physical inventory of sample units in the rep's inventory location |
 | **Provider Visit Requested Sample** | `ProviderVisitRqstSample` | `Product2`, `ProviderVisit` | Runtime record — created when a rep requests a sample during a visit |
 
@@ -75,7 +85,7 @@ Before setting up samples, you must have:
 - [ ] **Sample-level Product2 records** — e.g., `Immunexis GB 10mg Sample`, `Cordim GB 5mg Sample` (created by `scripts/create-products.apex`)
 - [ ] **Territory hierarchy** — e.g., `GB-FSR-001-London` (created by `scripts/create-territories.apex`)
 - [ ] **Country LifeSciMarketableProduct records** — e.g., `Immunexis GB` with `Type = 'Brand'` (created by `scripts/create-marketable-products.apex`)
-- [ ] **ProductTerritoryAvailability** — Country brands aligned to country territories (created by `scripts/create-territory-product-alignment.apex`)
+- [ ] **ProductTerritoryAvailability (Brands)** — Country brands aligned to country territories (created by `scripts/create-territory-product-alignment.apex`)
 - [ ] **Admin Console > Sample Drop** setting is **active** (check via Tooling API — see [Verify Admin Console](#step-5-verify-admin-console-settings))
 - [ ] **Rep assigned to territory** via `UserTerritory2Association`
 
@@ -88,11 +98,11 @@ When a rep opens the **Samples** panel during Visit Engagement, the platform exe
 | # | Object Queried | SOQL | Rows | Purpose |
 |---|---|---|---|---|
 | 1 | `UserAdditionalInfo` | `SELECT Preference, UserId FROM UserAdditionalInfo WHERE UserId IN (:currentUserId)` | 1 | Loads the current user's preferences (language, display settings) to personalize the visit experience. |
-| 2 | `ProductTerrDtlAvailability` | `SELECT ProductId, SortOrder FROM ProductTerrDtlAvailability WHERE (SortOrder != null AND RelatedTerritory.Name = '{territory}')` | 0+ | Checks for territory-aligned marketable products with sort orders. Returns the candidate product IDs. If 0 rows, no products (or samples) will display. |
+| 2 | `ProductTerrDtlAvailability` | `SELECT ProductId, SortOrder FROM ProductTerrDtlAvailability WHERE (SortOrder != null AND RelatedTerritory.Name = '{territory}')` | 0+ | Checks for territory-aligned marketable products with sort orders. **This query often returns 0 rows** because `SortOrder` is null by default and `RelatedTerritory` may point to the parent territory (not the leaf). However, returning 0 here does **not** block samples — the platform uses **all PTDAs for the territory** (via `TerritoryId`, regardless of `SortOrder` or `RelatedTerritory.Name`) as the master product pool for downstream queries. The real requirement is that PTDA records **exist** for the sample-level marketable products. |
 | 3 | `ApexClass` | `SELECT Id, Name, NamespacePrefix, ApiVersion FROM ApexClass WHERE (Name = 'ClassUtilities' AND NamespacePrefix = 'lsc4ce')` | 1 | Internal framework lookup — loads the LSC managed package utility class. |
 | 4 | `LifeSciProductAcctRstrc` | `SELECT AccountId, ProductId, Product.Name FROM LifeSciProductAcctRstrc WHERE TerritoryId = null` | 0+ | Loads **global** product-account restrictions. Products matching a restriction are excluded. |
 | 5 | `LifeSciProductAcctRstrc` | `SELECT AccountId, ProductId, Product.Name, TerritoryId, Territory.Name FROM LifeSciProductAcctRstrc WHERE Territory.Name = '{territory}'` | 0+ | Loads **territory-specific** product-account restrictions. |
-| 6 | `LifeSciMarketableProduct` | `SELECT Id, Name, Type, SortOrder, ... FROM LifeSciMarketableProduct WHERE (IsActive = true AND ... AND Id IN (:productIdsFromQuery2) AND Type IN ('Brand','Indication','TherapeuticArea','BrandIndication') AND IsCompetitorProduct = false)` | 0+ | Resolves the **Brand-level** marketable products for Product Details. Returns the parent brands (e.g., Immunexis GB, Cordim GB). |
+| 6 | `LifeSciMarketableProduct` | `SELECT Id, Name, Type, SortOrder, ... FROM LifeSciMarketableProduct WHERE (IsActive = true AND ... AND Id IN (:allPTDAProductIds) AND Type IN ('Brand','Indication','TherapeuticArea','BrandIndication') AND IsCompetitorProduct = false)` | 0+ | Resolves the **Brand-level** marketable products for Product Details. The `Id IN` clause contains **all PTDA ProductIds** for the territory (not just those from Query #2). Returns the parent brands (e.g., Immunexis GB, Cordim GB). |
 | 7 | `LifeSciMarketableProduct` | `SELECT Id, Name, Type, ... FROM LifeSciMarketableProduct WHERE Id IN (:brandIdsFromQuery6)` | 0+ | Re-queries the brand marketable products with full field set including `DistributionMethod` and `DefaultDistributionQuantity`. |
 | 8 | `ProductItem` | `SELECT Id, Product2Id, Product2.Name, ProductName FROM ProductItem WHERE LocationId IN (SELECT Id FROM Location WHERE (PrimaryUserId = :userId AND IsInventoryLocation = true AND LocationType = 'User Inventory'))` | 0+ | **Key query.** Loads the rep's physical inventory. Returns `Product2Id` values for products the rep actually has in stock. If the rep has no `ProductItem` records for sample products, no samples will appear. |
 | 9 | `LifeSciMarketableProduct` | `SELECT Id FROM LifeSciMarketableProduct WHERE (IsCompetitorProduct != true AND Type IN ('Product') AND ParentBrandProductId IN (:brandIdsFromQuery6) AND DistributionMethod IN ('Drop','DropAndShip') AND ProductId IN (:product2IdsFromQuery8) AND ProductSpecificationType IN ('LSSampleProduct'))` | 0+ | **The critical sample filter.** This is where most "No items found" issues originate. ALL conditions must pass — see filter analysis below. |
@@ -146,7 +156,34 @@ Creates 4 records for GB:
 
 ---
 
-### Step 2: ProductItem (Rep Inventory)
+### Step 2: Align Sample Products to Territory + Run Alignment Job
+
+**This is the most commonly missed step.** The Samples panel requires `ProductTerrDtlAvailability` (PTDA) records to exist for **each sample-level marketable product** in the rep's territory. PTDAs are read-only and can only be created by the alignment batch job from `ProductTerritoryAvailability` (PTA) records.
+
+Step 4 in the main data loading flow (README-04) creates PTAs for **Brand-level** marketable products only (e.g., Immunexis GB, Cordim GB). For samples, you also need PTAs for the **sample-level** marketable products created in Step 1 above.
+
+**How to align sample products:**
+
+1. Go to **Setup > Product Alignment** in the Admin Console
+2. In the **Products** panel, find each sample-level product (e.g., `Cordim GB 5mg`, `Immunexis GB 10mg`)
+3. In the **Territories** panel, check the box next to the rep's territory (e.g., `GB-FSR-001-London`)
+4. After aligning all sample products, run the **alignment batch job** (button at top of Product Alignment page)
+
+The batch job creates `ProductTerrDtlAvailability` records for each aligned product in the territory. The platform uses PTDAs as the **master product pool** — without them, samples will not appear even if all other data is correct.
+
+> **Why can't this be scripted?** PTA records can be created via Apex (see `scripts/create-territory-product-alignment.apex`), but PTDA records can only be created by the managed package alignment batch job. The batch job is not callable from anonymous Apex — it must be triggered from the Admin Console UI or via the Product Alignment Jobs page.
+
+> **Verifying PTDAs exist:** After the batch job completes, verify with:
+> ```apex
+> SELECT ProductId, Product.Name, SortOrder
+> FROM ProductTerrDtlAvailability
+> WHERE TerritoryId = '<territory-id>'
+> ```
+> You should see records for both Brand-level AND sample-level marketable products.
+
+---
+
+### Step 3: ProductItem (Rep Inventory)
 
 The rep must have physical inventory of the sample products. The platform checks `ProductItem` records in the rep's `Location` (type = `User Inventory`).
 
@@ -162,7 +199,7 @@ Creates `ProductItem` records with `QuantityOnHand = 1000` for each GB sample pr
 
 ---
 
-### Step 3: TimePeriod
+### Step 4: TimePeriod
 
 A `TimePeriod` defines the date range during which sample allocations are valid. The org may already have time periods — check first.
 
@@ -186,7 +223,7 @@ insert tp;
 
 ---
 
-### Step 4: TerritoryProdtQtyAllocation
+### Step 5: TerritoryProdtQtyAllocation
 
 This is the **sample quota** — how many units of each sample product a territory can distribute during the time period.
 
@@ -227,7 +264,7 @@ The script creates **2 allocations per sample product** (Drop + Ship):
 
 ---
 
-### Step 5: ProviderSampleLimitTemplate
+### Step 6: ProviderSampleLimitTemplate
 
 Sample limit templates define the **rules** governing how samples can be distributed. The org has a pre-configured template:
 
@@ -241,7 +278,7 @@ Country-specific templates (Germany AMG, Italy Class A/C, Belgium, etc.) exist b
 
 ---
 
-### Step 6: ProviderSampleLimit
+### Step 7: ProviderSampleLimit
 
 This links an **account** (HCP) to a **marketable product** with a **limit template**, controlling how many samples the HCP can receive.
 
@@ -268,7 +305,7 @@ The script:
 
 ---
 
-### Step 7: Verify Admin Console Settings
+### Step 8: Verify Admin Console Settings
 
 The **Sample Drop** configuration must be active in Admin Console. Verify with Tooling API:
 
@@ -296,8 +333,10 @@ Both should be active.
 
 For a sample product to appear in the **Samples** panel during a visit, ALL of these must be true:
 
-- [ ] **Brand marketable product aligned to territory**: A `ProductTerritoryAvailability` record links the Brand marketable product (e.g., `Immunexis GB`) to the rep's territory — this feeds query #2
+- [ ] **Brand marketable product aligned to territory**: A `ProductTerritoryAvailability` record links the Brand marketable product (e.g., `Immunexis GB`) to the rep's territory
 - [ ] **Sample-level marketable product exists**: A `LifeSciMarketableProduct` with `Type = 'Product'`, `ParentBrandProductId` → the Brand, `ProductId` → the sample Product2, `DistributionMethod` set, and `ProductSpecificationType = 'LSSampleProduct'` (auto-populated from Product2)
+- [ ] **Sample-level products aligned to territory**: Each sample-level marketable product must have a `ProductTerritoryAvailability` record linking it to the rep's territory (e.g., `Cordim GB 5mg` → `GB-FSR-001-London`)
+- [ ] **Alignment batch job has been run**: After creating PTAs, the alignment batch job must run to create `ProductTerrDtlAvailability` records. **This is the #1 cause of "No items found"** — PTDAs are the master product pool the Samples panel reads from, and they can only be created by the batch job.
 - [ ] **Rep has inventory**: A `ProductItem` record exists in the rep's `Location` (User Inventory) for the sample Product2
 - [ ] **Territory has allocation**: A `TerritoryProdtQtyAllocation` record exists for the sample Product2 in the rep's territory with a current `TimePeriod`
 - [ ] **Allocation OwnerId is the rep**: Under Private sharing, the rep can't see allocations owned by the admin
@@ -319,9 +358,10 @@ flowchart LR
     S3 --> S4["Step 4<br/><b>create-territory-product-alignment</b>"]
     S4 --> S5["Step 5<br/><b>create-provider-territory-info</b>"]
     S5 --> S6a["Step 6a<br/><b>create-sample-marketable-products</b>"]
-    S6a --> S6b["Step 6b<br/><b>create-sample-inventory</b>"]
-    S6b --> S6c["Step 6c<br/><b>create-sample-allocations</b>"]
-    S6c --> S6d["Step 6d<br/><b>create-sample-limits</b>"]
+    S6a --> S6b["Step 6b<br/><b>Align samples to territory<br/>+ Run alignment batch job</b>"]
+    S6b --> S6c["Step 6c<br/><b>create-sample-inventory</b>"]
+    S6c --> S6d["Step 6d<br/><b>create-sample-allocations</b>"]
+    S6d --> S6e["Step 6e<br/><b>create-sample-limits</b>"]
 
     style S1 fill:#4a90d9,color:#fff
     style S2 fill:#f5a623,color:#fff
@@ -329,9 +369,10 @@ flowchart LR
     style S4 fill:#e74c3c,color:#fff
     style S5 fill:#2ecc71,color:#fff
     style S6a fill:#2ecc71,color:#fff
-    style S6b fill:#2ecc71,color:#fff
+    style S6b fill:#e74c3c,color:#fff
     style S6c fill:#2ecc71,color:#fff
     style S6d fill:#2ecc71,color:#fff
+    style S6e fill:#2ecc71,color:#fff
 ```
 
 ---
