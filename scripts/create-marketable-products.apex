@@ -77,6 +77,7 @@ for (String brandCode : brandCodes) {
             existing.IsActive = true;
             existing.ProductId = null;
             existing.ParentBrandProductId = parentBrandMktId;
+            existing.ParentProductId = parentBrandMktId;
             existing.Country__c = country;
             existing.Description = brandName + ' - ' + country + ' marketable product';
             toUpdate.add(existing);
@@ -87,6 +88,7 @@ for (String brandCode : brandCodes) {
                 Type = 'Brand',
                 IsActive = true,
                 ParentBrandProductId = parentBrandMktId,
+                ParentProductId = parentBrandMktId,
                 Country__c = country,
                 Description = brandName + ' - ' + country + ' marketable product'
             ));

@@ -38,24 +38,24 @@ graph TD
         COR_DE_20["Cordim DE 20mg Sample"]
     end
 
-    IMM -->|ParentProduct__c| IMM_US
-    IMM -->|ParentProduct__c| IMM_GB
-    IMM -->|ParentProduct__c| IMM_FR
-    IMM -->|ParentProduct__c| IMM_IT
-    IMM -->|ParentProduct__c| IMM_ES
-    IMM -->|ParentProduct__c| IMM_DE
+    IMM --> IMM_US
+    IMM --> IMM_GB
+    IMM --> IMM_FR
+    IMM --> IMM_IT
+    IMM --> IMM_ES
+    IMM --> IMM_DE
 
-    COR -->|ParentProduct__c| COR_US
-    COR -->|ParentProduct__c| COR_GB
-    COR -->|ParentProduct__c| COR_FR
-    COR -->|ParentProduct__c| COR_IT
-    COR -->|ParentProduct__c| COR_ES
-    COR -->|ParentProduct__c| COR_DE
+    COR --> COR_US
+    COR --> COR_GB
+    COR --> COR_FR
+    COR --> COR_IT
+    COR --> COR_ES
+    COR --> COR_DE
 
-    IMM_DE -->|ParentProduct__c| IMM_DE_10
-    IMM_DE -->|ParentProduct__c| IMM_DE_25
-    COR_DE -->|ParentProduct__c| COR_DE_5
-    COR_DE -->|ParentProduct__c| COR_DE_20
+    IMM_DE --> IMM_DE_10
+    IMM_DE --> IMM_DE_25
+    COR_DE --> COR_DE_5
+    COR_DE --> COR_DE_20
 
     style IMM fill:#4a90d9,color:#fff
     style COR fill:#4a90d9,color:#fff
@@ -79,12 +79,20 @@ graph TD
 
 ## Key Design Decisions
 
-### Why Use Product2.ParentProduct__c?
-- Custom lookup field that works without enabling the Product Hierarchy feature
-- Safe to deploy — no org-wide side effects
-- Fully customizable with validation rules, triggers, or flows
-- Enables roll-up reporting from sample → sub-brand → brand
-- Can migrate to standard `ParentId` later if Product Hierarchy is enabled (see [README-06](README-06-Parent-Child-Approaches.md))
+### LifeSciMarketableProduct.ParentProductId (Product Hierarchy UI)
+
+The LSC **Product Hierarchy** page in Setup (`Product Configuration > Product Hierarchy`) renders its tree from `LifeSciMarketableProduct` records, **not** from `Product2`. The tree is built by querying `WHERE ParentProductId = null` to find root nodes, then walking children via `ParentProductId`.
+
+When creating country-specific marketable products, you must set **both**:
+
+| Field | Purpose |
+|---|---|
+| `ParentBrandProductId` | Used by mobile app for sample limit resolution (walks up to Brand) |
+| `ParentProductId` | Used by Product Hierarchy UI to render the parent-child tree |
+
+If `ParentProductId` is not set, country sub-brands appear as root-level nodes in the Product Hierarchy instead of nesting under their parent Brand.
+
+The fix script `scripts/fix-sub-brand-parent-hierarchy.apex` corrects this by setting `ParentProductId` on all country sub-brand and sample dosage `LifeSciMarketableProduct` records. The `scripts/create-marketable-products.apex` script has also been updated to set both fields on future runs.
 
 ### Why a Separate Sub-Brand Per Country?
 - **Product messages** (ProductGuidance) differ by country due to regulatory/compliance

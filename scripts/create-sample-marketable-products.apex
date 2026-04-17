@@ -13,7 +13,7 @@ String COUNTRY_CODE = 'GB';  // Country filter for sample products
 
 // Step 1: Find sample-level Product2 records for this country
 List<Product2> sampleProducts = [
-    SELECT Id, Name, ProductCode, Country__c, ParentProduct__c, ParentProduct__r.Name
+    SELECT Id, Name, ProductCode, Country__c
     FROM Product2
     WHERE Family = 'Sample' AND Country__c = :COUNTRY_CODE AND IsActive = true
     ORDER BY Name
@@ -70,9 +70,10 @@ for (Product2 p : sampleProducts) {
     }
 
     // Determine which brand this sample belongs to
-    // Sample names are like "Immunexis GB 10mg Sample" — extract the brand name
-    String parentName = p.ParentProduct__r.Name; // e.g., "Immunexis GB"
-    String brandName = parentName.replace(' ' + COUNTRY_CODE, ''); // e.g., "Immunexis"
+    // ProductCode is like "CORDIM-GB-5mg-SMPL" — extract the brand code prefix
+    String brandCode = p.ProductCode.substringBefore('-'); // e.g., "CORDIM"
+    // Convert to brand name: "CORDIM" → "Cordim", "IMMUNEXIS" → "Immunexis"
+    String brandName = brandCode.substring(0, 1) + brandCode.substring(1).toLowerCase();
 
     Id parentBrandMktId = brandNameToMktId.get(brandName);
     if (parentBrandMktId == null) {

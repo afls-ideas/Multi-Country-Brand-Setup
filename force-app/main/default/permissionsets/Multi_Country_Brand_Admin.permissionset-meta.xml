@@ -1,16 +1,11 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
     <label>Multi-Country Brand Admin</label>
-    <description>Provides read/edit access to Country__c and ParentProduct__c fields across Product2, LifeSciMarketableProduct, and ProductGuidance for multi-country brand management.</description>
+    <description>Provides read/edit access to Country__c fields across Product2, LifeSciMarketableProduct, and ProductGuidance for multi-country brand management.</description>
     <hasActivationRequired>false</hasActivationRequired>
     <fieldPermissions>
         <editable>true</editable>
         <field>Product2.Country__c</field>
-        <readable>true</readable>
-    </fieldPermissions>
-    <fieldPermissions>
-        <editable>true</editable>
-        <field>Product2.ParentProduct__c</field>
         <readable>true</readable>
     </fieldPermissions>
     <fieldPermissions>

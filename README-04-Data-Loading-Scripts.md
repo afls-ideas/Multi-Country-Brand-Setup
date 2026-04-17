@@ -34,7 +34,6 @@ flowchart LR
 
 **Prerequisites:**
 - `Country__c` custom picklist field deployed to `Product2` and `LifeSciMarketableProduct` (see `force-app/` metadata)
-- `ParentProduct__c` custom lookup deployed to `Product2` (see [README-06](README-06-Parent-Child-Approaches.md))
 - `Family` picklist values `Brand`, `Sub-Brand`, `Sample` available on `Product2.Family`
 - `Multi_Country_Brand_Admin` permission set assigned to running user (for FLS on custom fields)
 - Existing `Immunexis` and `Cordim` Brand-type LifeSciMarketableProduct records (these exist in the standard LSC demo data)
@@ -50,8 +49,8 @@ Creates 38 Product2 records in a three-level hierarchy:
 | Level | Family | Records | Parent Field |
 |-------|--------|---------|--------------|
 | 1 | Brand | 2 | None |
-| 2 | Sub-Brand | 12 (2 brands x 6 countries) | `ParentProduct__c` → Brand |
-| 3 | Sample | 24 (12 sub-brands x 2 dosages) | `ParentProduct__c` → Sub-Brand |
+| 2 | Sub-Brand | 12 (2 brands x 6 countries) | None (hierarchy is on LifeSciMarketableProduct) |
+| 3 | Sample | 24 (12 sub-brands x 2 dosages) | None (hierarchy is on LifeSciMarketableProduct) |
 
 **Run it:**
 ```bash
@@ -61,10 +60,9 @@ sf apex run --file scripts/create-products.apex --target-org {your_org}
 **How it works:**
 1. Queries all existing Product2 records by ProductCode (idempotency key)
 2. Inserts new records or updates existing ones
-3. Populates `ParentProduct__c` to link child → parent
-4. Sets `Country__c` on Sub-Brands and Samples
+3. Sets `Country__c` on Sub-Brands and Samples
 
-> **Note:** The script uses `ParentProduct__c` (custom lookup) by default. If your org has Product Hierarchy enabled, swap to the lines marked `[STANDARD HIERARCHY]` in the script. See [README-06](README-06-Parent-Child-Approaches.md) for details.
+> **Note:** Product2 records are flat catalog entries. The parent-child hierarchy is managed on `LifeSciMarketableProduct` via `ParentProductId` and `ParentBrandProductId` — see Step 2.
 
 ---
 

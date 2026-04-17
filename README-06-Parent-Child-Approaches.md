@@ -1,21 +1,16 @@
-# README 06 — Parent-Child Relationship Approaches
+# README 06 — Product Hierarchy: Where It Lives
 
 ## Overview
 
-Product2 records in this project form a three-level hierarchy: **Brand > Sub-Brand > Sample**. Salesforce offers two ways to model this parent-child relationship. **It is the customer's choice which approach to use.**
+Product2 records in this project form a three-level catalog: **Brand > Sub-Brand > Sample**. However, the actual parent-child hierarchy used by LSC — the Product Hierarchy UI, mobile sample limit resolution, territory alignment, and visit engagement — lives on **LifeSciMarketableProduct**, not on Product2.
 
 ```mermaid
 graph TD
-    A[Parent-Child Strategy] --> B[Option A: Standard Product Hierarchy]
-    A --> C[Option B: Custom ParentProduct__c Lookup]
+    A[Where does the hierarchy live?] --> B[LifeSciMarketableProduct]
 
-    B --> B1[Uses standard ParentId field]
-    B --> B2[Requires feature enablement in Setup]
-    B --> B3[Native tree views in Product UI]
-
-    C --> C1[Uses custom ParentProduct__c field]
-    C --> C2[Works in any org immediately]
-    C --> C3[Full control over behavior]
+    B --> B1[ParentProductId — drives Product Hierarchy tree UI]
+    B --> B2[ParentBrandProductId — drives mobile sample limit resolution]
+    B --> B3[ParentTherapeuticAreaId — therapeutic area grouping]
 ```
 
 ---
@@ -30,145 +25,47 @@ The screenshot below shows the **All Products** list view after running `scripts
 > - **Brands** (e.g., `IMMUNEXIS`) have no country suffix and Family = Brand
 > - **Sub-Brands** (e.g., `IMMUNEXIS-DE`) include the country code and Family = Sub-Brand
 > - **Samples** (e.g., `IMMUNEXIS-DE-10mg-SMPL`) include country + dosage + SMPL suffix and Family = Sample
-> - The `ParentProduct__c` field (not shown in this view) links each level to its parent
+> - Product2 records are flat catalog entries — the parent-child tree is on LifeSciMarketableProduct
 
 ---
 
-## Option A: Standard Product Hierarchy (ParentId)
+## LifeSciMarketableProduct Hierarchy Fields
 
-Salesforce provides a built-in **Product Hierarchy** feature that adds a standard `ParentId` field to Product2. This creates a native parent-child relationship managed by the platform.
+The LSC Product Hierarchy page (Setup > Product Configuration > Product Hierarchy) renders its tree from `LifeSciMarketableProduct` records. Three self-lookup fields control the relationships:
 
-### How to Enable
+| Field | Purpose | Used By |
+|-------|---------|---------|
+| `ParentProductId` | Drives the tree in the Product Hierarchy UI (`WHERE ParentProductId = null` = root nodes) | Product Hierarchy page |
+| `ParentBrandProductId` | Used by mobile app to walk up from SKU to Brand for sample limit resolution | Mobile sampling |
+| `ParentTherapeuticAreaId` | Links to the therapeutic area grouping | Product Hierarchy page |
 
-1. Navigate to **Setup > Product Settings**
-2. Enable **Product Hierarchy**
-3. The standard `ParentId` field becomes available on Product2
-
-### Pros
-
-| Advantage | Detail |
-|-----------|--------|
-| Native platform feature | Built-in UI for viewing product trees |
-| No custom metadata | Uses standard field — no custom field deployment needed |
-| Platform-maintained | Salesforce manages referential integrity |
-| Report-friendly | Standard hierarchical rollups in reports |
-| Managed package compatibility | ISV packages may expect ParentId |
-
-### Cons
-
-| Limitation | Detail |
-|------------|--------|
-| Requires explicit enablement | Not available by default — must be turned on in Setup |
-| Org-wide change | Enabling Product Hierarchy affects all products, not just yours |
-| Cannot disable once enabled | After enabling, the feature cannot be turned off |
-| Limited customization | Cannot add custom logic (e.g., validation rules on reparenting) without triggers |
-| Not always available in scratch orgs | May require specific org features/editions |
-
-### Script Usage
-
-In `scripts/create-products.apex`, swap the commented lines marked `[STANDARD HIERARCHY]`:
-
-```apex
-// CURRENT (custom lookup):
-existing.ParentProduct__c = parentId;
-
-// SWAP TO (standard hierarchy):
-// existing.ParentId = parentId;
-```
+When creating country-specific marketable products, **both `ParentProductId` and `ParentBrandProductId` must be set**. If `ParentProductId` is missing, country sub-brands appear as root-level nodes instead of nesting under their parent Brand.
 
 ---
 
-## Option B: Custom ParentProduct__c Lookup (Current Approach)
+## Product2 vs LifeSciMarketableProduct
 
-This project uses a custom lookup field `ParentProduct__c` on Product2 that points back to Product2. This provides the same parent-child relationship without requiring the Product Hierarchy feature.
+| Aspect | Product2 | LifeSciMarketableProduct |
+|--------|----------|--------------------------|
+| Role | Master product catalog | Activates products for LSC features |
+| Hierarchy | None (flat catalog records) | `ParentProductId`, `ParentBrandProductId` |
+| Product Hierarchy UI | Not used | Drives the tree |
+| Mobile sampling | Not used directly | Resolves sample limits via `ParentBrandProductId` |
+| Territory alignment | Not used | `ProductTerritoryAvailability` links to this object |
 
-### Field Definition
-
-| Property | Value |
-|----------|-------|
-| API Name | `ParentProduct__c` |
-| Type | Lookup(Product2) |
-| Relationship Name | `ChildProducts` |
-| Relationship Label | Child Products |
-| Delete Constraint | SetNull |
-| Required | No |
-
-### Pros
-
-| Advantage | Detail |
-|-----------|--------|
-| Works immediately | No feature enablement required |
-| Safe to deploy | Adding a custom field has no org-wide side effects |
-| Fully customizable | Add validation rules, triggers, or flow logic freely |
-| Reversible | Can be removed without affecting other features |
-| Coexists with ParentId | If Product Hierarchy is enabled later, both fields can exist |
-
-### Cons
-
-| Limitation | Detail |
-|------------|--------|
-| Not a standard field | Third-party packages won't recognize it |
-| No native tree view | Product hierarchy UI features won't use this field |
-| Manual reporting | Hierarchical rollups require custom report types |
-| Migration needed if switching | If you later enable Product Hierarchy, records must be migrated from ParentProduct__c to ParentId |
+Think of Product2 as the **definition** and LifeSciMarketableProduct as the **activation** for LSC.
 
 ---
 
-## Comparison
+## Historical Note: ParentProduct__c
 
-```mermaid
-graph LR
-    subgraph "Option A: Standard ParentId"
-        A1[Brand] -->|ParentId| A2[Sub-Brand]
-        A2 -->|ParentId| A3[Sample]
-    end
+This project originally used a custom `ParentProduct__c` lookup on Product2 to model the hierarchy. This field has been removed because:
 
-    subgraph "Option B: Custom ParentProduct__c"
-        B1[Brand] -->|ParentProduct__c| B2[Sub-Brand]
-        B2 -->|ParentProduct__c| B3[Sample]
-    end
-```
+1. The LSC Product Hierarchy UI does not read Product2 parent-child relationships
+2. The mobile app resolves sample limits via `LifeSciMarketableProduct.ParentBrandProductId`, not Product2
+3. Maintaining parallel hierarchies on both objects adds confusion with no functional benefit
 
-| Criteria | Standard ParentId | Custom ParentProduct__c |
-|----------|-------------------|-------------------------|
-| Requires feature enablement | Yes | No |
-| Available in all orgs | No (needs Product Hierarchy) | Yes |
-| Native UI support | Yes (tree views) | No |
-| Custom logic support | Limited (triggers only) | Full (validation, flows, triggers) |
-| Reversible | No (cannot disable) | Yes (delete field) |
-| ISV package compatibility | High | Low |
-| Deployment risk | Medium (org-wide change) | Low (single custom field) |
-| This project's default | No | **Yes** |
-
----
-
-## Migration Path: Custom to Standard
-
-If a customer starts with `ParentProduct__c` and later decides to enable Product Hierarchy, the migration is straightforward:
-
-1. Enable Product Hierarchy in Setup
-2. Run a data migration script to copy `ParentProduct__c` values to `ParentId`
-3. Update `scripts/create-products.apex` to use the `[STANDARD HIERARCHY]` lines
-4. Optionally remove `ParentProduct__c` after verifying all data migrated
-
-```apex
-// Migration script example:
-List<Product2> products = [
-    SELECT Id, ParentProduct__c
-    FROM Product2
-    WHERE ParentProduct__c != null
-];
-for (Product2 p : products) {
-    p.ParentId = p.ParentProduct__c;
-}
-update products;
-```
-
----
-
-## Recommendation
-
-**Start with `ParentProduct__c` (Option B)** unless your org already has Product Hierarchy enabled or you have a specific requirement for the standard field. The custom lookup gives you full flexibility with zero org-wide impact. You can always migrate to the standard field later.
+The hierarchy now lives exclusively on `LifeSciMarketableProduct`, which is where LSC expects it.
 
 ---
 
@@ -176,10 +73,10 @@ update products;
 
 | Component | Path | Status |
 |-----------|------|--------|
-| ParentProduct__c field | `force-app/main/default/objects/Product2/fields/ParentProduct__c.field-meta.xml` | Deployed |
 | Permission Set (FLS) | `force-app/main/default/permissionsets/Multi_Country_Brand_Admin.permissionset-meta.xml` | Deployed |
-| Create script | `scripts/create-products.apex` | Uses ParentProduct__c by default |
-| Delete script | `scripts/delete-products.apex` | No change needed |
+| Create products script | `scripts/create-products.apex` | Creates flat Product2 records |
+| Create marketable products script | `scripts/create-marketable-products.apex` | Sets ParentProductId + ParentBrandProductId |
+| Fix hierarchy script | `scripts/fix-sub-brand-parent-hierarchy.apex` | Corrects missing ParentProductId |
 
 ---
 

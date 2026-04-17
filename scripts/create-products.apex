@@ -5,9 +5,9 @@
 // as the unique key. Safe to re-run — existing records are
 // updated in place, new records are inserted.
 //
-// Parent-child relationships use ParentProduct__c (custom lookup).
-// If your org has Product Hierarchy enabled (standard ParentId),
-// see the comments marked [STANDARD HIERARCHY] to switch.
+// Parent-child relationships on Product2 are informational only.
+// The actual hierarchy used by the LSC Product Hierarchy UI and
+// mobile app is on LifeSciMarketableProduct (ParentProductId).
 //
 // To modify the hierarchy, edit data/products.json and update
 // the data structures below to match, then re-run this script.
@@ -43,7 +43,7 @@ Map<String, List<String>> sampleDosages = new Map<String, List<String>>{
 
 Map<String, Product2> existingByCode = new Map<String, Product2>();
 for (Product2 p : [
-    SELECT Id, ProductCode, Name, Family, IsActive, Country__c, ParentProduct__c, Description
+    SELECT Id, ProductCode, Name, Family, IsActive, Country__c, Description
     FROM Product2
     WHERE ProductCode LIKE 'IMMUNEXIS%' OR ProductCode LIKE 'CORDIM%'
 ]) {
@@ -82,19 +82,11 @@ for (Map<String, String> def : brandDefs) {
 if (!brandsToInsert.isEmpty()) insert brandsToInsert;
 if (!brandsToUpdate.isEmpty()) update brandsToUpdate;
 
-// Build lookup: ProductCode → Id
-Map<String, Id> brandIdByCode = new Map<String, Id>();
-for (Product2 b : brandsToInsert) { brandIdByCode.put(b.ProductCode, b.Id); }
-for (Product2 b : brandsToUpdate) { brandIdByCode.put(b.ProductCode, b.Id); }
-
 System.debug('=== BRANDS ===');
 System.debug('  Inserted: ' + brandsToInsert.size() + '  Updated: ' + brandsToUpdate.size());
-for (String code : brandIdByCode.keySet()) {
-    System.debug('  ' + code + ' → ' + brandIdByCode.get(code));
-}
 
 // -----------------------------------------------------------
-// 3. SUB-BRANDS (Level 2) — parent = Brand
+// 3. SUB-BRANDS (Level 2)
 // -----------------------------------------------------------
 
 List<Product2> subBrandsToInsert = new List<Product2>();
@@ -103,7 +95,6 @@ List<Product2> subBrandsToUpdate = new List<Product2>();
 for (Map<String, String> def : brandDefs) {
     String brandName = def.get('name');
     String brandCode = def.get('productCode');
-    Id parentId = brandIdByCode.get(brandCode);
 
     for (String country : countries) {
         String code = brandCode + '-' + country;
@@ -113,8 +104,6 @@ for (Map<String, String> def : brandDefs) {
             existing.Name = brandName + ' ' + country;
             existing.Family = 'Sub-Brand';
             existing.IsActive = true;
-            existing.ParentProduct__c = parentId;         // Custom lookup
-            // existing.ParentId = parentId;              // [STANDARD HIERARCHY] Use this instead if enabled
             existing.Country__c = country;
             existing.Description = brandName + ' - ' + country + ' market variant';
             subBrandsToUpdate.add(existing);
@@ -124,8 +113,6 @@ for (Map<String, String> def : brandDefs) {
                 ProductCode = code,
                 Family = 'Sub-Brand',
                 IsActive = true,
-                ParentProduct__c = parentId,              // Custom lookup
-                // ParentId = parentId,                   // [STANDARD HIERARCHY] Use this instead if enabled
                 Country__c = country,
                 Description = brandName + ' - ' + country + ' market variant'
             ));
@@ -136,22 +123,17 @@ for (Map<String, String> def : brandDefs) {
 if (!subBrandsToInsert.isEmpty()) insert subBrandsToInsert;
 if (!subBrandsToUpdate.isEmpty()) update subBrandsToUpdate;
 
-// Build lookup: ProductCode → Id
-Map<String, Id> subBrandIdByCode = new Map<String, Id>();
-for (Product2 sb : subBrandsToInsert) { subBrandIdByCode.put(sb.ProductCode, sb.Id); }
-for (Product2 sb : subBrandsToUpdate) { subBrandIdByCode.put(sb.ProductCode, sb.Id); }
-
 System.debug('=== SUB-BRANDS ===');
 System.debug('  Inserted: ' + subBrandsToInsert.size() + '  Updated: ' + subBrandsToUpdate.size());
 for (Product2 sb : subBrandsToInsert) {
-    System.debug('  [NEW] ' + sb.Name + ' [' + sb.Country__c + '] → Parent: ' + sb.ParentProduct__c);
+    System.debug('  [NEW] ' + sb.Name + ' [' + sb.Country__c + ']');
 }
 for (Product2 sb : subBrandsToUpdate) {
-    System.debug('  [UPD] ' + sb.Name + ' [' + sb.Country__c + '] → Parent: ' + sb.ParentProduct__c);
+    System.debug('  [UPD] ' + sb.Name + ' [' + sb.Country__c + ']');
 }
 
 // -----------------------------------------------------------
-// 4. SAMPLES (Level 3) — parent = Sub-Brand
+// 4. SAMPLES (Level 3)
 // -----------------------------------------------------------
 
 List<Product2> samplesToInsert = new List<Product2>();
@@ -163,8 +145,6 @@ for (Map<String, String> def : brandDefs) {
     List<String> dosages = sampleDosages.get(brandCode);
 
     for (String country : countries) {
-        String subBrandCode = brandCode + '-' + country;
-        Id parentId = subBrandIdByCode.get(subBrandCode);
 
         for (String dosage : dosages) {
             String code = brandCode + '-' + country + '-' + dosage + '-SMPL';
@@ -174,8 +154,6 @@ for (Map<String, String> def : brandDefs) {
                 existing.Name = brandName + ' ' + country + ' ' + dosage + ' Sample';
                 existing.Family = 'Sample';
                 existing.IsActive = true;
-                existing.ParentProduct__c = parentId;     // Custom lookup
-                // existing.ParentId = parentId;          // [STANDARD HIERARCHY] Use this instead if enabled
                 existing.Country__c = country;
                 existing.Description = brandName + ' ' + dosage + ' sample for ' + country + ' market';
                 samplesToUpdate.add(existing);
@@ -185,8 +163,6 @@ for (Map<String, String> def : brandDefs) {
                     ProductCode = code,
                     Family = 'Sample',
                     IsActive = true,
-                    ParentProduct__c = parentId,          // Custom lookup
-                    // ParentId = parentId,               // [STANDARD HIERARCHY] Use this instead if enabled
                     Country__c = country,
                     Description = brandName + ' ' + dosage + ' sample for ' + country + ' market'
                 ));
@@ -201,10 +177,10 @@ if (!samplesToUpdate.isEmpty()) update samplesToUpdate;
 System.debug('=== SAMPLES ===');
 System.debug('  Inserted: ' + samplesToInsert.size() + '  Updated: ' + samplesToUpdate.size());
 for (Product2 s : samplesToInsert) {
-    System.debug('  [NEW] ' + s.Name + ' [' + s.Country__c + '] → Parent: ' + s.ParentProduct__c);
+    System.debug('  [NEW] ' + s.Name + ' [' + s.Country__c + ']');
 }
 for (Product2 s : samplesToUpdate) {
-    System.debug('  [UPD] ' + s.Name + ' [' + s.Country__c + '] → Parent: ' + s.ParentProduct__c);
+    System.debug('  [UPD] ' + s.Name + ' [' + s.Country__c + ']');
 }
 
 // -----------------------------------------------------------
