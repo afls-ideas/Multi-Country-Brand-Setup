@@ -10,33 +10,33 @@ This document explains how sample limit validation works on the LSC mobile iPad 
 
 When a rep submits a sample drop, the server-side API (`/connect/life-sciences/commercial/sample-limits-validation`) executes the following query sequence. Understanding this flow is essential for diagnosing issues.
 
-**User context:** `evan@lsc4ce-260-pm.org` | **Account:** Aaron Smith | **Product:** Immunexis 5mg
+The following trace is from a typical sample drop validation for a single SKU product.
 
-| # | Object | Purpose | Rows |
-|---|--------|---------|------|
-| 1 | `ProductItem` | Look up the inventory item being dropped | 1 |
-| 2 | `LifeSciMarketableProduct` | Get marketable product for the Product2 | 1 |
-| 3 | `ApexClass` | Load managed package utility class | 1 |
-| 4 | `LifeSciMarketableProduct` | Validate the marketable product is active | 1 |
-| 5 | `Account` | Load account for the visit | 1 |
-| 6 | `UserAdditionalInfo` | Get user preferences (locale, etc.) | 1 |
-| 7–8 | `LifeSciProductAcctRstrc` | Check global and territory-specific product-account restrictions | 0 |
-| 9 | `HealthcareProvider` | Get HCP provider record | 1 |
-| 10–11 | `LifeSciMarketableProduct` | Check if product requires signature | 0 |
-| 12 | `ProductItem` | Re-fetch inventory item | 1 |
-| 13 | `ProductBatchItem` | Validate batch assignment | 1 |
-| 14 | `LifeSciMarketableProduct` | Get full marketable product with name | 1 |
-| **15** | **`ProviderSampleLimit`** | **Find sample limit for this account × product** | **1** |
-| 16 | `InventoryCountAssessment` | Get last completed inventory count | 1 |
-| 17 | `DeviceSyncTransactionRecord` | Check pending mobile sync transactions | 0 |
-| 18 | `Account` | Re-fetch account name | 1 |
-| 19 | `Product2` | Fetch product names for error message | 1 |
-| **20** | **`ProviderSampleLimit`** | **Load the Rule JSON for validation** | **1** |
-| 21–22 | `LifeSciMarketableProduct` | Walk product hierarchy (ParentBrandProduct) | 1 |
-| **23** | **`ProviderSmplLmtTmplAssignment`** | **Load template assignment for the product** | **1** |
-| 24 | `ProviderSampleLimit` | Load all limits for the account | 8 |
-| 25 | `LifeSciMarketableProduct` | Final hierarchy walk | 1 |
-| **26** | **EXCEPTION** | **"exceeds the remaining sample limit of 0"** | — |
+| # | Object | Purpose | Expected |
+|---|--------|---------|----------|
+| 1 | `ProductItem` | Look up the inventory item being dropped | Required |
+| 2 | `LifeSciMarketableProduct` | Get marketable product for the Product2 | Required |
+| 3 | `ApexClass` | Load managed package utility class | Required |
+| 4 | `LifeSciMarketableProduct` | Validate the marketable product is active | Required |
+| 5 | `Account` | Load account for the visit | Required |
+| 6 | `UserAdditionalInfo` | Get user preferences (locale, etc.) | Required |
+| 7–8 | `LifeSciProductAcctRstrc` | Check global and territory-specific product-account restrictions | Optional |
+| 9 | `HealthcareProvider` | Get HCP provider record | Required |
+| 10–11 | `LifeSciMarketableProduct` | Check if product requires signature | Optional |
+| 12 | `ProductItem` | Re-fetch inventory item | Required |
+| 13 | `ProductBatchItem` | Validate batch assignment | Required |
+| 14 | `LifeSciMarketableProduct` | Get full marketable product with name | Required |
+| **15** | **`ProviderSampleLimit`** | **Find sample limit for this account × product** | **Required** |
+| 16 | `InventoryCountAssessment` | Get last completed inventory count | Optional |
+| 17 | `DeviceSyncTransactionRecord` | Check pending mobile sync transactions | Optional |
+| 18 | `Account` | Re-fetch account name | Required |
+| 19 | `Product2` | Fetch product names for error message | Required |
+| **20** | **`ProviderSampleLimit`** | **Load the Rule JSON for validation** | **Required** |
+| 21–22 | `LifeSciMarketableProduct` | Walk product hierarchy (ParentBrandProduct) | Required |
+| **23** | **`ProviderSmplLmtTmplAssignment`** | **Load template assignment for the product** | **Required** |
+| 24 | `ProviderSampleLimit` | Load all limits for the account | Required |
+| 25 | `LifeSciMarketableProduct` | Final hierarchy walk | Required |
+| **26** | **EXCEPTION** | **"exceeds the remaining sample limit"** | — |
 
 ### Critical Query: ProviderSmplLmtTmplAssignment (#23)
 
@@ -86,7 +86,27 @@ The most common cause of sample limits not working is creating `ProviderSampleLi
 ❌ ProviderSampleLimit.ProductId → LifeSciMarketableProduct (Type = 'Product')
 ```
 
-The mobile app resolves sample limits by walking **up** the product hierarchy from the SKU being dropped to its parent Brand. The limit record must be on the Brand so the hierarchy walk finds it. The `strategy: "SKU"` in the rule JSON means the quota is counted per-SKU, but the limit record itself must live on the Brand.
+### What the rep sees on mobile
+
+On the iPad, when a rep taps the 3-dot menu on a Brand in the Samples section, they see per-SKU limits like this:
+
+![Sample Limits on Mobile](images/sample-limits-mobile.png)
+
+Each card shows limits for an individual SKU (e.g., Immunexis 10mg, 15mg, 5mg) with its allowed-per-period, period length, remaining quantity, allowed-per-visit, and date of last drop. Even though the **display is per-SKU**, the underlying data is stored as a **single `ProviderSampleLimit` record on the Brand**.
+
+### Why Brand level?
+
+The mobile app resolves sample limits by walking **up** the product hierarchy. When a rep drops a sample of "Immunexis 10mg" (a SKU), the app:
+
+1. Looks up the SKU's `ParentBrandProductId` to find the Brand (e.g., "Immunexis")
+2. Queries `ProviderSampleLimit` for that Brand × Account combination
+3. Reads the Rule JSON, which contains per-SKU quotas inside a single Brand-level record
+
+If the `ProviderSampleLimit` record points to a SKU instead of the Brand, the hierarchy walk never finds it, and validation silently skips.
+
+### One record, multiple SKU limits
+
+A single `ProviderSampleLimit` record on the Brand contains rules that apply to **all SKUs** under that Brand. The `strategy: "SKU"` in the Rule JSON means quotas are tracked independently per SKU, but the record itself must live on the Brand. This is how one `ProviderSampleLimit` record produces the three separate cards shown in the screenshot above.
 
 ### How to tell if limits are at the wrong level
 
