@@ -1,7 +1,15 @@
 // ============================================================
 // create-sample-limits.apex
 // Creates ProviderSampleLimit records linking accounts in a
-// territory to marketable products with a sample limit template.
+// territory to SKU-level marketable products (Type='Product')
+// with a sample limit template.
+//
+// IMPORTANT: Limits must point to SKU-level products, NOT
+// Brand-level. The mobile app matches the dropped product
+// against ProviderSampleLimit.ProductId — if it points to the
+// Brand, the "no products that belong to Classes with limits"
+// error appears.
+//
 // Idempotent — safe to re-run.
 // ============================================================
 
@@ -39,18 +47,31 @@ if (templates.isEmpty()) {
 ProviderSampleLimitTemplate template = templates[0];
 System.debug('Using template: ' + template.MasterLabel);
 
-// Step 3: Find country-level marketable products (Type = 'Brand')
-List<LifeSciMarketableProduct> mktProducts = [
-    SELECT Id, Name, Country__c
-    FROM LifeSciMarketableProduct
-    WHERE Country__c = :COUNTRY_CODE AND IsActive = true AND Type = 'Brand'
-    ORDER BY Name
-];
-if (mktProducts.isEmpty()) {
+// Step 3: Find SKU-level marketable products (Type = 'Product') for this country
+// SKU products don't have Country__c set — find them via their parent brand.
+Set<Id> countryBrandIds = new Set<Id>();
+for (LifeSciMarketableProduct brand : [
+    SELECT Id FROM LifeSciMarketableProduct
+    WHERE Country__c = :COUNTRY_CODE AND Type = 'Brand' AND IsActive = true
+]) {
+    countryBrandIds.add(brand.Id);
+}
+if (countryBrandIds.isEmpty()) {
     System.debug('ERROR: No active Brand marketable products found for country: ' + COUNTRY_CODE);
     return;
 }
-System.debug('Found ' + mktProducts.size() + ' marketable products for ' + COUNTRY_CODE);
+
+List<LifeSciMarketableProduct> mktProducts = [
+    SELECT Id, Name
+    FROM LifeSciMarketableProduct
+    WHERE Type = 'Product' AND ParentBrandProductId IN :countryBrandIds AND IsActive = true
+    ORDER BY Name
+];
+if (mktProducts.isEmpty()) {
+    System.debug('ERROR: No active SKU-level (Type=Product) marketable products found under ' + COUNTRY_CODE + ' brands.');
+    return;
+}
+System.debug('Found ' + mktProducts.size() + ' SKU-level marketable products for ' + COUNTRY_CODE);
 
 // Step 4: Find accounts in the territory via ProviderAcctTerritoryInfo
 List<ProviderAcctTerritoryInfo> patiRecords = [
@@ -95,7 +116,7 @@ for (Id acctId : accountIds) {
                 AccountId = acctId,
                 ProductId = mp.Id,
                 PrvdSampleLimitTemplateId = template.Id,
-                PrvdSampleLmtTemplateName = template.MasterLabel,
+                PrvdSampleLmtTemplateName = TEMPLATE_DEV_NAME,
                 Rule = template.RuleCondition
             ));
         }
