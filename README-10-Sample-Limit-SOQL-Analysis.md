@@ -106,36 +106,58 @@ If the `ProviderSampleLimit` record points to a SKU instead of the Brand, the hi
 
 ### One record, multiple SKU limits
 
-A single `ProviderSampleLimit` record on the Brand contains rules that apply to **all SKUs** under that Brand. The `strategy: "SKU"` in the Rule JSON means quotas are tracked independently per SKU, but the record itself must live on the Brand. This is how one `ProviderSampleLimit` record produces the three separate cards shown in the screenshot above.
+A single `ProviderSampleLimit` record on the Brand contains rules that apply to **all SKUs** under that Brand. The `strategy: "SKU"` in the Rule JSON means quotas are **tracked independently per SKU** at runtime, but the **quota values are the same** for all SKUs. This is how one `ProviderSampleLimit` record produces the three separate cards shown in the screenshot above — each SKU gets its own remaining count, but they all share the same allowed-per-period and allowed-per-visit values.
 
-### How to tell if limits are at the wrong level
+For example, in the screenshot: Immunexis 10mg, 15mg, and 5mg each show "Allowed per period: 10" and "Allowed per Visit: 2", but their "Remaining Quantity" differs (5, 0, and 0) because each SKU's usage is tracked independently.
 
-Check the `productType` in the Rule JSON on `ProviderSampleLimit`:
+> **Can different SKUs have different quotas (e.g., 5mg allowed 3 per visit, 10mg allowed 1)?**
+> No — the Rule JSON defines a single `quota` per rule at the Brand level. All SKUs under that Brand inherit the same quota. To enforce different limits for different SKUs, you would need separate Brands or a custom validation approach.
 
-| productType in Rule JSON | What it means |
-|--------------------------|---------------|
-| `"Brand"` | Correct — limit is on a Brand-level marketable product |
-| `"LSSampleProduct"` | Wrong — limit is on a SKU-level product, validation will not fire |
+### The actual Rule JSON
 
-A properly structured Rule JSON looks like this:
+Here is the actual `ProviderSampleLimit.Rule` JSON that corresponds to the screenshot above. This is what gets stored on a single Brand-level record and drives both the mobile display and validation:
 
 ```json
 {
   "template": {
     "operations": [
-      {"operation": "RULE", "rule": "PerVisitLimit"},
-      {"operation": "RULE", "rule": "PerPeriodLimit"},
-      {"operation": "AND"}
+      { "operation": "RULE", "rule": "PerVisitLimit" },
+      { "operation": "RULE", "rule": "PerPeriodLimit" },
+      { "operation": "AND" }
     ],
     "name": "lsc4ce_GenericTemplate",
     "blockType": "Error",
     "label": "Generic Template"
   },
   "products": {
-    "<Brand-level MktProd Id>": {
+    "<Brand MktProd Id>": {
       "rules": {
-        "PerVisitLimit": { "quota": 2, "remaining": 2, "strategy": "SKU", ... },
-        "PerPeriodLimit": { "quota": 10, "remaining": 10, "strategy": "SKU", ... }
+        "PerVisitLimit": {
+          "quota": 2,
+          "remaining": 2,
+          "strategy": "SKU",
+          "calculation": "SamplesPerVisit",
+          "label": "Maximum Quantity per Visit",
+          "starts": "2026-01-01",
+          "ends": "2026-12-31",
+          "period": {
+            "type": "SampleLimitDateRangePeriod",
+            "params": {}
+          }
+        },
+        "PerPeriodLimit": {
+          "quota": 10,
+          "remaining": 10,
+          "strategy": "SKU",
+          "calculation": "SamplesInPeriod",
+          "label": "Maximum Quantity per Period",
+          "starts": "2026-01-01",
+          "ends": "2026-12-31",
+          "period": {
+            "type": "SampleLimitDateRangePeriod",
+            "params": {}
+          }
+        }
       },
       "info": {
         "productType": "Brand",
@@ -146,6 +168,28 @@ A properly structured Rule JSON looks like this:
   }
 }
 ```
+
+Key fields explained:
+
+| Field | Description |
+|-------|-------------|
+| `template.blockType` | `"Error"` blocks submission; `"Warning"` shows a warning but allows it |
+| `template.operations` | Boolean logic combining rules — `AND` means both must pass |
+| `products.<id>.rules.PerVisitLimit.quota` | Max samples of any single SKU per visit (2 in screenshot) |
+| `products.<id>.rules.PerPeriodLimit.quota` | Max samples of any single SKU per period (10 in screenshot) |
+| `products.<id>.rules.*.remaining` | Runtime counter — decremented as drops are recorded |
+| `products.<id>.rules.*.strategy` | `"SKU"` = track per SKU independently under the Brand |
+| `products.<id>.info.productType` | Must be `"Brand"` for validation to work |
+| `products.<id>.info.excludedChildProducts` | SKU IDs excluded from this limit (e.g., inactive SKUs) |
+
+### How to tell if limits are at the wrong level
+
+Check the `productType` in the Rule JSON on `ProviderSampleLimit`:
+
+| productType in Rule JSON | What it means |
+|--------------------------|---------------|
+| `"Brand"` | Correct — limit is on a Brand-level marketable product |
+| `"LSSampleProduct"` | Wrong — limit is on a SKU-level product, validation will not fire |
 
 Key differences from an incorrectly configured (SKU-level) record:
 - `productType` is `"Brand"` (not `"LSSampleProduct"`)
