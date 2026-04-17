@@ -4,6 +4,8 @@
 
 This document captures the lessons learned from setting up sample limit validation on the LSC mobile iPad app. Sample limits control how many sample units a rep can drop per visit or per period for a given HCP account. Getting them to work on mobile requires several data records, correct JSON formats, and Admin Console settings — all aligned.
 
+When validation does not fire during visit engagement on mobile, work through the checks below in order.
+
 ---
 
 ## How Sample Limits Work
@@ -38,140 +40,341 @@ flowchart TD
 | **Sample Limit** | `ProviderSampleLimit` | Links a template to an **Account × Brand product** — the per-HCP limit |
 | **Visit Sample Limit Transaction** | `ProviderVisitSampleLimitTransaction` | Runtime record — created when validation runs during submit |
 
+### Key Admin Console Paths
+
+| Action | Path |
+|--------|------|
+| Run sample limit batch job | Admin Console > Sample Limits (tile) > Sample Limit Jobs > Assign Sample Limit Templates to Accounts |
+| Enable sample limit validation | Admin Console > Visit Settings > Validate sample limits |
+| Product alignment | Admin Console > Product (tile) > Product Alignment |
+| Product alignment jobs | Admin Console > Product (tile) > Product Alignment Jobs |
+
 ---
 
-## Critical Configuration Requirements
+## Check 1 — Are Assignments and Limits at Brand Level?
 
-### 1. ProviderSampleLimit.ProductId Must Point to Brand-Level Products
+`ProviderSampleLimit.ProductId` and `ProviderSmplLmtTmplAssignment.ProductId` must point to **Brand-level** marketable products (Type = `Brand`), NOT SKU-level (Type = `Product`).
 
 ```
 ✅ ProviderSampleLimit.ProductId → LifeSciMarketableProduct (Type = 'Brand')
 ❌ ProviderSampleLimit.ProductId → LifeSciMarketableProduct (Type = 'Product')  ← won't work
 ```
 
-The mobile app resolves sample limits by walking up the product hierarchy. The limit must be at the **Brand** level (e.g., `Cordim GB`), not at the SKU level (e.g., `Cordim GB 20mg`). The `strategy: "SKU"` in the rule JSON means the quota is calculated per-SKU, but the limit record itself is on the Brand.
+**Diagnose:**
 
-### 2. ProviderSmplLmtTmplAssignment Must Also Be at Brand Level
-
-Template assignments must point to the same Brand-level marketable products as the limits.
-
-### 3. PrvdSampleLmtTemplateName Must Be the DeveloperName
-
-```
-✅ PrvdSampleLmtTemplateName = 'GB_Sample_Limit_Template'   (DeveloperName)
-❌ PrvdSampleLmtTemplateName = 'GB Sample Limit Template'    (MasterLabel)
+```sql
+SELECT Id, ProductId, Product.Name, Product.Type
+FROM ProviderSmplLmtTmplAssignment
+WHERE Product.Name LIKE '%<your product>%'
 ```
 
-The managed package code queries by `PrvdSampleLmtTemplateName` using the **DeveloperName**, not the label. If this is wrong, the batch job returns 0 rows and hits a null reference.
+If `Product.Type` = `Product` instead of `Brand`, the assignment is at the wrong level.
 
-### 4. Rule JSON Format — Object/Map, Not Array
+**Why this breaks limits:** The mobile app resolves limits by walking **up** the product hierarchy from the dropped SKU to find its parent Brand, then queries `ProviderSampleLimit` for that Brand × Account. If the PSL record points to a SKU, the hierarchy walk never finds it, and validation **silently skips**.
 
-The `Rule` field on `ProviderSampleLimit` and `RuleCondition` on `ProviderSmplLmtTmplAssignment` must use the **object/map format** keyed by template DeveloperName:
+**How to verify in Rule JSON:** Check `productType` in the `ProviderSampleLimit.Rule` JSON:
 
-```json
-{
-  "GB_Sample_Limit_Template": {
-    "rules": [
-      {
-        "strategy": "SKU",
-        "quota": 10,
-        "period": {
-          "type": "SampleLimitDateRangePeriod",
-          "params": { "starts": "2025-10-07", "ends": "2026-10-08" }
-        },
-        "name": "PerPeriodLimit",
-        "label": "Maximum Quantity per Period",
-        "calculation": "SamplesInPeriod"
-      },
-      {
-        "strategy": "SKU",
-        "quota": 2,
-        "period": {
-          "type": "SampleLimitDateRangePeriod",
-          "params": { "starts": "2025-10-07", "ends": "2026-10-08" }
-        },
-        "name": "PerVisitLimit",
-        "label": "Maximum Quantity per Visit",
-        "calculation": "SamplesPerVisit"
-      }
-    ],
-    "priority": 1.0,
-    "name": "GB_Sample_Limit_Template",
-    "label": "GB Sample Limit Template",
-    "isCustom": true
-  }
-}
+| productType in Rule JSON | What it means |
+|--------------------------|---------------|
+| `"Brand"` | Correct — limit is on a Brand-level marketable product |
+| `"LSSampleProduct"` | Wrong — generated from SKU-level assignment, must fix and re-run batch job |
+
+**Fix:**
+
+1. Delete the incorrect SKU-level assignment(s) and PSL records
+2. Create `ProviderSmplLmtTmplAssignment` with `ProductId` set to the Brand-level marketable product
+3. Run the batch job to regenerate `ProviderSampleLimit` records
+4. Verify `productType: "Brand"` in the generated Rule JSON
+
+---
+
+## Check 2 — Do ProviderSampleLimit Records Exist?
+
+`ProviderSampleLimit` records are what the mobile app validates against. They are generated by a batch job — they do not exist by default.
+
+**Diagnose:**
+
+```sql
+SELECT Id, ProductId, Product.Name, Product.Type, PrvdSampleLmtTemplateName, Rule
+FROM ProviderSampleLimit
+WHERE Product.Name LIKE '%<your product>%'
 ```
 
-**Do NOT use the array format** (`[{...}, {...}]`) — the template's own `RuleCondition` uses the array format, but the limit and assignment records need the map format.
+If 0 records are returned, the batch job was either never run or produced no output (e.g., because assignments were at SKU level).
 
-### 5. Date Ranges Must Be Valid
+**Fix:**
 
-Empty date strings (`"starts":"","ends":""`) cause null dereference errors in the managed package. Always set valid date ranges that cover the current date.
+1. Ensure assignments are at Brand level (Check 1)
+2. Run the batch job: **Admin Console > Sample Limits (tile) > Sample Limit Jobs > Assign Sample Limit Templates to Accounts**
+3. After the job completes, re-run the query and verify:
+   - `Product.Type` = `Brand`
+   - The `Rule` JSON contains `"productType": "Brand"` (not `"LSSampleProduct"`)
 
-### 6. Default Salesforce Templates Are NOT Editable
+---
 
-The `lsc4ce_GenericTemplate` (Generic Template) is a Salesforce-managed default template. Its `RuleCondition` field cannot be updated via DML — attempting it throws:
+## Check 3 — Are Assignments Shared with the Rep User?
 
+`ProviderSmplLmtTmplAssignment` has **Private** Organization-Wide Default (OWD) sharing. This is the most common cause of "validation works on web but not mobile":
+
+| Context | Data Access | Validation Result |
+|---------|------------|-------------------|
+| **Web** (server-side API) | System context — reads all records | Works regardless of sharing |
+| **Mobile** (local SQLite cache) | User context — only syncs shared records | Silently skips if assignment not shared |
+
+**Diagnose:**
+
+```sql
+SELECT Id, ParentId, UserOrGroupId, AccessLevel, RowCause
+FROM ProviderSmplLmtTmplAssignmentShare
+WHERE UserOrGroupId = '<rep user ID>'
 ```
-You can only change the active status on this default template provided by Salesforce. Other properties aren't editable.
-```
 
-**The Generic Template has empty date ranges in its RuleCondition** (`"starts":"","ends":""`), which causes the "Assign Sample Limit Templates to Accounts" batch job to fail with a null reference. **You must create a custom template** with valid dates instead.
+If 0 records are returned for the rep, the assignment is not shared with them.
 
-### 7. ProviderSmplLmtTmplAssignment OWD Is Private
-
-After creating template-product assignments, you must share them with the rep user:
+**Fix:**
 
 ```apex
-ProviderSmplLmtTmplAssignmentShare share = new ProviderSmplLmtTmplAssignmentShare(
+insert new ProviderSmplLmtTmplAssignmentShare(
     ParentId = assignmentId,
     UserOrGroupId = repUserId,
     AccessLevel = 'Read'
 );
-insert share;
 ```
 
-Alternatively, change the OWD to Public Read Only in Setup > Sharing Settings.
+**Alternative:** Change the OWD for `ProviderSmplLmtTmplAssignment` to **Public Read Only** in Setup > Sharing Settings.
 
-### 8. Admin Console "Validate Sample Limits" Must Be Enabled
+---
 
-In **Admin Console > Visit Administration > Visit Settings**, the **"Validate sample limits"** checkbox must be checked. Without this, sample limits are not enforced on submit.
+## Check 4 — Are All 3 DbSchema (OMCC) Entries Active?
 
-### 9. DbSchema Entries Required for Mobile Sync
-
-All three objects need active DbSchema entries in Admin Console for mobile cache sync:
+The mobile app uses DbSchema entries (stored as `LifeSciConfigRecord` metadata in the OMCC framework) to determine which objects to sync to the local SQLite database. Three entries are required for sample limits:
 
 - `DbSchema_ProviderSampleLimit`
 - `DbSchema_ProviderSampleLimitTemplate`
 - `DbSchema_ProviderSmplLmtTmplAssignment`
 
-### 10. Product Hierarchy Must Be Fully Linked
+**Diagnose (Tooling API only — not queryable via standard SOQL):**
 
-Every marketable product in the chain must have `ParentTherapeuticAreaId` set:
-
-```
-TherapeuticArea (e.g., Rheumatology)
-  ↑ ParentBrandProductId
-Brand (e.g., Cordim)           — ParentTherapeuticAreaId → Rheumatology
-  ↑ ParentBrandProductId
-Brand/Country (e.g., Cordim GB) — ParentTherapeuticAreaId → Rheumatology
-  ↑ ParentBrandProductId
-Product/SKU (e.g., Cordim GB 20mg) — ParentTherapeuticAreaId → Rheumatology
+```sql
+SELECT Id, DeveloperName, IsActive FROM LifeSciConfigRecord
+WHERE DeveloperName IN (
+  'DbSchema_ProviderSampleLimit',
+  'DbSchema_ProviderSampleLimitTemplate',
+  'DbSchema_ProviderSmplLmtTmplAssignment'
+)
 ```
 
-If `ParentTherapeuticAreaId` is null, the batch job that creates sample limits hits a null dereference.
+All 3 must exist and have `IsActive = true`. If any are missing, the mobile app will not sync the corresponding object and validation silently skips.
+
+**Fix — Deploy missing DbSchema entries:**
+
+Deploy as `LifeSciConfigRecord` metadata XML. Each file must include:
+
+- `<fieldValues>` entries, especially `<fieldName>SObject</fieldName>` with `<objectValue>` set to the target object API name
+- Profile `<assignments>` for all profiles that need mobile sync
+- `<lifeSciConfigCategory>DbSchema</lifeSciConfigCategory>`
+- `<type>DATA</type>`
+
+**Two-phase deployment required:**
+
+1. Deploy with `<isActive>false</isActive>` — this creates the records
+2. Redeploy the same files with `<isActive>true</isActive>` — this activates them
+
+Deploying active in a single step fails with the error `Enter: [Type, SObject]`.
+
+**Example metadata XML** (for `ProviderSampleLimitTemplate` — adapt `<objectValue>` and `<masterLabel>` for other objects):
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<LifeSciConfigRecord xmlns="http://soap.sforce.com/2006/04/metadata">
+    <assignments>
+        <assignedTo>LS PH Field Sales Representative</assignedTo>
+        <assignmentLevel>Profile</assignmentLevel>
+    </assignments>
+    <assignments>
+        <assignedTo>System Administrator</assignedTo>
+        <assignmentLevel>Profile</assignmentLevel>
+    </assignments>
+    <fieldValues>
+        <dataType>PICKLIST</dataType>
+        <fieldName>Status</fieldName>
+        <hasBooleanValue>false</hasBooleanValue>
+        <picklistValue>Valid</picklistValue>
+    </fieldValues>
+    <fieldValues>
+        <dataType>PICKLIST</dataType>
+        <fieldName>Type</fieldName>
+        <hasBooleanValue>false</hasBooleanValue>
+        <picklistValue>DATA</picklistValue>
+    </fieldValues>
+    <fieldValues>
+        <dataType>OBJECT</dataType>
+        <fieldName>SObject</fieldName>
+        <hasBooleanValue>false</hasBooleanValue>
+        <objectValue>ProviderSampleLimitTemplate</objectValue>
+    </fieldValues>
+    <fieldValues>
+        <dataType>FIELD</dataType>
+        <fieldName>DeltaDateField</fieldName>
+        <fieldValue>LastModifiedDate</fieldValue>
+        <hasBooleanValue>false</hasBooleanValue>
+    </fieldValues>
+    <fieldValues>
+        <dataType>BOOLEAN</dataType>
+        <fieldName>EnableDataUploadNotification</fieldName>
+        <hasBooleanValue>true</hasBooleanValue>
+    </fieldValues>
+    <isActive>true</isActive>
+    <isOrgLevel>false</isOrgLevel>
+    <lifeSciConfigCategory>DbSchema</lifeSciConfigCategory>
+    <masterLabel>DbSchema_ProviderSampleLimitTemplate</masterLabel>
+    <type>DATA</type>
+</LifeSciConfigRecord>
+```
 
 ---
 
-## "Classes with Limits" Error — What It Actually Means
+## Check 5 — Is "Validate Sample Limits" Enabled?
 
-The message **"There are no products that belong to Classes with limits"** appears when tapping the **"i" button** next to the Samples section header on mobile. Per internal Slack discussion:
+In **Admin Console > Visit Settings**, the **"Validate sample limits"** checkbox must be checked. Without this, sample limits are not enforced on submit.
 
-- The "i" button is designed for **Italy Class A/C templates** with `"strategy":"SHARED"` between brands
-- The **3-dot menu** on individual Brands shows limits for generic templates
-- The "i" button message does NOT necessarily mean limits are broken — it may just mean Italy-specific templates aren't configured
-- Sample limit **validation on submit** works independently of the "i" button display
+---
+
+## Check 6 — Is the RuleCondition JSON Format Correct?
+
+The `RuleCondition` on `ProviderSmplLmtTmplAssignment` must use the **map/object format**, not the array format.
+
+### Correct (map format)
+
+```json
+{
+  "PerPeriodLimit": {
+    "name": "PerPeriodLimit",
+    "label": "Maximum Quantity per Period",
+    "strategy": "SKU",
+    "quota": 10,
+    "calculation": "SamplesInPeriod",
+    "period": {
+      "type": "SampleLimitDateRangePeriod",
+      "params": { "starts": "2026-01-01", "ends": "2026-12-31" }
+    }
+  },
+  "PerVisitLimit": {
+    "name": "PerVisitLimit",
+    "label": "Maximum Quantity per Visit",
+    "strategy": "SKU",
+    "quota": 2,
+    "calculation": "SamplesPerVisit",
+    "period": {
+      "type": "SampleLimitDateRangePeriod",
+      "params": { "starts": "2026-01-01", "ends": "2026-12-31" }
+    }
+  }
+}
+```
+
+### Incorrect (array format — do NOT use)
+
+```json
+[{ "name": "PerPeriodLimit", ... }, { "name": "PerVisitLimit", ... }]
+```
+
+**Note:** The template's own `RuleCondition` on `ProviderSampleLimitTemplate` uses the array format. But the assignment record (`ProviderSmplLmtTmplAssignment.RuleCondition`) needs the map format. They're named the same field but expect different structures.
+
+**Validation checklist:**
+
+- [ ] Map/object format (not array)
+- [ ] Date range in `params.starts` / `params.ends` covers the current date
+- [ ] `strategy` = `SKU`
+- [ ] `calculation` values are `SamplesInPeriod` and `SamplesPerVisit`
+- [ ] `period.type` = `SampleLimitDateRangePeriod`
+
+---
+
+## Check 7 — Is the ProviderSampleLimit Rule JSON Format Correct?
+
+The `Rule` field on `ProviderSampleLimit` is auto-generated by the batch job. Always verify the format after running.
+
+**Diagnose:**
+
+```sql
+SELECT Id, ProductId, Product.Name, PrvdSampleLmtTemplateName, Rule
+FROM ProviderSampleLimit
+WHERE Product.Name LIKE '%<your product>%'
+```
+
+**Expected Rule JSON format:**
+
+```json
+{
+  "template": {
+    "operations": [
+      { "rule": "PerVisitLimit", "operation": "RULE" },
+      { "rule": "PerPeriodLimit", "operation": "RULE" },
+      { "operation": "AND" }
+    ],
+    "name": "lsc4ce_GenericTemplate",
+    "label": "Generic Template",
+    "blockType": "Error"
+  },
+  "products": {
+    "<Brand Marketable Product Id>": {
+      "rules": {
+        "PerVisitLimit": {
+          "strategy": "SKU",
+          "starts": "2026-01-01",
+          "remaining": 2,
+          "quota": 2,
+          "period": { "type": "SampleLimitDateRangePeriod", "params": {} },
+          "label": "Maximum Quantity per Visit",
+          "ends": "2026-12-31",
+          "calculation": "SamplesPerVisit"
+        },
+        "PerPeriodLimit": {
+          "strategy": "SKU",
+          "starts": "2026-01-01",
+          "remaining": 10,
+          "quota": 10,
+          "period": { "type": "SampleLimitDateRangePeriod", "params": {} },
+          "label": "Maximum Quantity per Period",
+          "ends": "2026-12-31",
+          "calculation": "SamplesInPeriod"
+        }
+      },
+      "info": {
+        "productType": "Brand",
+        "excludedChildProducts": [],
+        "annualAllocations": {}
+      }
+    }
+  },
+  "groups": {}
+}
+```
+
+**Rule JSON validation checklist:**
+
+| Field | Expected Value | Red Flag |
+|-------|----------------|----------|
+| `template.blockType` | `"Error"` or `"Warning"` | Missing or null — validation won't fire |
+| `template.name` | Template `DeveloperName` | Mismatch with actual template |
+| `products` key | Brand-level marketable product ID | SKU-level ID — hierarchy walk won't match |
+| `info.productType` | `"Brand"` | `"LSSampleProduct"` = wrong level, must fix |
+| `info.excludedChildProducts` | `[]` (empty array) | Missing = may cause null reference on mobile |
+| `rules.*.starts` / `rules.*.ends` | Date range covering current date | Expired or future = validation won't apply |
+| `rules.*.remaining` | Equal to `quota` initially | Less than `quota` on fresh record = prior drops counted |
+| `groups` | `{}` (empty object) | Should be present even if empty |
+
+---
+
+## Check 8 — Additional Checks
+
+| Check | How to Verify |
+|-------|---------------|
+| `PrvdSampleLmtTemplateName` uses DeveloperName | Must match `DeveloperName` (e.g., `lsc4ce_GenericTemplate`), not `MasterLabel` |
+| Product hierarchy fully linked | `ParentTherapeuticAreaId` set at all levels of the marketable product hierarchy |
+| Default template not used for assignments | `lsc4ce_GenericTemplate` has empty dates — create a custom template instead |
+| Device synced after changes | After any data or metadata fix, the rep must perform a full sync on mobile |
 
 ---
 
@@ -198,6 +401,17 @@ delete [SELECT Id FROM ProviderSampleLimit];
 
 ---
 
+## "Classes with Limits" Error — What It Actually Means
+
+The message **"There are no products that belong to Classes with limits"** appears when tapping the **"i" button** next to the Samples section header on mobile:
+
+- The "i" button is designed for **Italy Class A/C templates** with `"strategy":"SHARED"` between brands
+- The **3-dot menu** on individual Brands shows limits for generic templates
+- The "i" button message does NOT necessarily mean limits are broken — it may just mean Italy-specific templates aren't configured
+- Sample limit **validation on submit** works independently of the "i" button display
+
+---
+
 ## Setup Script — Custom Template for One Account
 
 ```apex
@@ -215,9 +429,9 @@ insert t;
 
 // 2. Create template assignments (Brand-level)
 ProviderSmplLmtTmplAssignment assign = new ProviderSmplLmtTmplAssignment(
-    ProductId = cordimGBMarketableProductId,  // Brand-level!
+    ProductId = brandMarketableProductId,  // Brand-level!
     PrvdSampleLimitTemplateId = t.Id,
-    RuleCondition = '{"GB_Sample_Limit_Template":{...}}'  // Map format
+    RuleCondition = '{"PerPeriodLimit":{...},"PerVisitLimit":{...}}'  // Map format!
 );
 insert assign;
 
@@ -228,48 +442,35 @@ insert new ProviderSmplLmtTmplAssignmentShare(
     AccessLevel = 'Read'
 );
 
-// 4. Create sample limits (Brand-level)
-insert new ProviderSampleLimit(
-    AccountId = accountId,
-    ProductId = cordimGBMarketableProductId,  // Brand-level!
-    PrvdSampleLimitTemplateId = t.Id,
-    PrvdSampleLmtTemplateName = 'GB_Sample_Limit_Template',  // DeveloperName!
-    Rule = '{"GB_Sample_Limit_Template":{...}}'  // Map format
-);
+// 4. Run batch job to create ProviderSampleLimit records
+// Admin Console > Sample Limits (tile) > Sample Limit Jobs
+// > Assign Sample Limit Templates to Accounts
 ```
 
 ---
 
-## Current Org State (as of 2026-04-16)
+## Quick Diagnostic Checklist
 
-| Record | Details |
-|--------|---------|
-| **Custom Template** | `GB_Sample_Limit_Template` — PerVisitLimit=2, PerPeriodLimit=10, dates 2025-10-07 to 2026-10-08 |
-| **Template Assignments** | Cordim GB (Brand), Immunexis GB (Brand) → shared with gb.rep |
-| **Sample Limits** | Aaron Smith × Cordim GB, Aaron Smith × Immunexis GB |
-| **Validate Sample Limits** | Enabled in Visit Settings |
-| **DbSchema entries** | All 3 active |
+When sample limits don't fire on mobile:
 
----
-
-## Troubleshooting Checklist
-
-- [ ] Custom template created (not the default Generic Template) with valid date ranges
-- [ ] `PrvdSampleLmtTemplateName` uses DeveloperName, not MasterLabel
-- [ ] `ProviderSampleLimit.ProductId` points to Brand-level marketable product
-- [ ] `ProviderSmplLmtTmplAssignment.ProductId` points to Brand-level marketable product
-- [ ] `Rule` / `RuleCondition` JSON uses object/map format keyed by template DeveloperName
-- [ ] Template assignments shared with rep (Private OWD)
-- [ ] "Validate sample limits" enabled in Visit Settings
-- [ ] DbSchema entries active for all 3 sample limit objects
+- [ ] `ProviderSampleLimit.ProductId` points to a **Brand-level** marketable product (Type = 'Brand')
+- [ ] Rule JSON has `productType: "Brand"` (not `"LSSampleProduct"`)
+- [ ] `ProviderSmplLmtTmplAssignment.ProductId` also at Brand level
+- [ ] Template assignments **shared** with the rep user (Private OWD)
+- [ ] "Validate sample limits" enabled in Admin Console > Visit Settings
+- [ ] All 3 DbSchema entries active (`ProviderSampleLimit`, `ProviderSampleLimitTemplate`, `ProviderSmplLmtTmplAssignment`)
 - [ ] Product hierarchy fully linked (`ParentTherapeuticAreaId` set on all levels)
-- [ ] Date ranges in rules cover the current date
+- [ ] `RuleCondition` on assignment uses map format (not array)
+- [ ] Rule JSON date ranges cover the current date
+- [ ] `PrvdSampleLmtTemplateName` uses DeveloperName, not MasterLabel
+- [ ] Custom template used (not the default Generic Template with empty dates)
 - [ ] Mobile synced after changes
 
 ---
 
 ## Related READMEs
 
+- [README-10: Sample Limit Validation Analysis](README-10-Sample-Limit-SOQL-Analysis.md) — SOQL execution trace and best practices
 - [README-08: Sample Management Setup](README-08-Sample-Management-Setup.md) — Full sample data chain
 - [README-04: Data Loading Scripts](README-04-Data-Loading-Scripts.md) — Script execution order
 - [README-01: Product Hierarchy Architecture](README-01-Product-Hierarchy.md) — Product hierarchy structure
