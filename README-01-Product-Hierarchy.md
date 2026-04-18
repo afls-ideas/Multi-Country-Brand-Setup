@@ -77,11 +77,24 @@ graph TD
     style COR_DE_20 fill:#7ed321,color:#fff
 ```
 
+### What It Looks Like in the Org
+
+The screenshot below shows the Product Hierarchy page for Immunexis after setup. Each country sub-brand (Immunexis DE, ES, FR, GB, IT, US) nests under the global brand, with country-specific dosage products underneath.
+
+![Product Hierarchy — Immunexis](images/product-hierarchy-immunexis.png)
+
+> **Key observations:**
+> - The tree is built from `LifeSciMarketableProduct` records linked via `ParentProductId`
+> - The **warning icon** (triangle) next to a product indicates it is **not yet aligned to a territory** — reps will not see it until a `ProductTerritoryAvailability` record is created (see [README-04 Step 4](README-04-Data-Loading-Scripts.md#step-4-align-marketable-products-to-territories))
+> - Products without the warning (e.g., Immunexis GB dosages) are already territory-aligned and visible to reps
+
 ## Key Design Decisions
 
 ### Product Hierarchy Lives on LifeSciMarketableProduct
 
-The LSC **Product Hierarchy** page (Setup > Product Configuration > Product Hierarchy) renders its tree from `LifeSciMarketableProduct` records, not from `Product2`. When creating country-specific marketable products, set **both** parent fields:
+The LSC **Product Hierarchy** page (Setup > Product Configuration > Product Hierarchy) renders its tree from `LifeSciMarketableProduct` records, not from `Product2`. Territory alignment (`ProductTerritoryAvailability`) also targets `LifeSciMarketableProduct` — this is what drives product visibility for end users. A rep only sees products that are aligned to their territory.
+
+When creating country-specific marketable products, set **both** parent fields:
 
 | Field | Purpose |
 |---|---|
@@ -98,16 +111,20 @@ See [README-06](README-06-Parent-Child-Approaches.md) for details on how the hie
 - **Product priorities** differ by market
 - **Account restrictions** may vary by country
 
-### Country__c Custom Field on Product2
-A custom picklist `Country__c` is added to Product2 to:
+### Country__c Custom Field
+
+A custom picklist `Country__c` is added to both `Product2` and `LifeSciMarketableProduct` to:
+- Make it explicit which country a record belongs to
 - Enable list views and reports filtered by country
-- Drive assignment rules and sharing
+- Drive **sharing rules** for admins (e.g., "FR admin can only edit FR products")
 - Allow Admin Console / DB Schema filtering
 - Support data loader operations filtered by country
 
-| Field API Name | Type | Values |
-|---|---|---|
-| `Country__c` | Picklist | US, GB, FR, IT, ES, DE |
+While territory alignment controls what **reps** see, `Country__c` controls what **admins** can manage — particularly useful when country-level administrators should only have access to their own market's records.
+
+| Field API Name | Objects | Type | Values |
+|---|---|---|---|
+| `Country__c` | `Product2`, `LifeSciMarketableProduct`, `ProductGuidance` | Picklist | US, GB, FR, IT, ES, DE |
 
 ### Product Family Picklist Values
 The standard `Family` field on Product2 is used to distinguish hierarchy levels:
