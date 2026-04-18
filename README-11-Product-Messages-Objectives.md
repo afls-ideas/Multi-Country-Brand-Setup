@@ -255,7 +255,18 @@ The screenshot below shows Visit Engagement on iPad for Immunexis GB. The three 
 > - **Messages** are the `Type = 'Message'` ProductGuidance records linked to the Immunexis GB `LifeSciMarketableProduct`
 > - The **Shared** toggle creates a `ProviderVisitDtlProductMsg` record when enabled
 > - **+ Add Discussion** lets the rep add free-text notes beyond the pre-defined messages
-> - **+ Add Next Visit Objective** links to Objective-type ProductGuidance records
+> - **+ Add Next Visit Objective** opens the objectives picker (see below)
+
+### Objectives in Visit Engagement
+
+Objectives appear in the **Next Visit Objectives** section after clicking **+ Add Next Visit Objective**. The rep selects an objective from a dropdown populated by `Type = 'Objective'` ProductGuidance records linked to the same sub-brand. The dropdown shows the `ContentText` of each objective, and the rep can add comments.
+
+![Visit Engagement — Immunexis GB Objectives](images/visit-engagement-objectives-immunexis-gb.png)
+
+> **Key observations:**
+> - The **Next Visit Objective** dropdown lists the two Immunexis GB objectives: "Establish Immunexis as the preferred monthly bio..." and "Secure formulary inclusion across all major NHS ICB..."
+> - Unlike Messages (which appear automatically), Objectives must be **explicitly added** by clicking **+ Add Next Visit Objective**
+> - The **Comments** field lets the rep record progress notes against the selected objective
 
 ### Call Discussion Records
 
