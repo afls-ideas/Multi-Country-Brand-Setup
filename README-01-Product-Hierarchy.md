@@ -79,20 +79,16 @@ graph TD
 
 ## Key Design Decisions
 
-### LifeSciMarketableProduct.ParentProductId (Product Hierarchy UI)
+### Product Hierarchy Lives on LifeSciMarketableProduct
 
-The LSC **Product Hierarchy** page in Setup (`Product Configuration > Product Hierarchy`) renders its tree from `LifeSciMarketableProduct` records, **not** from `Product2`. The tree is built by querying `WHERE ParentProductId = null` to find root nodes, then walking children via `ParentProductId`.
-
-When creating country-specific marketable products, you must set **both**:
+The LSC **Product Hierarchy** page (Setup > Product Configuration > Product Hierarchy) renders its tree from `LifeSciMarketableProduct` records, not from `Product2`. When creating country-specific marketable products, set **both** parent fields:
 
 | Field | Purpose |
 |---|---|
-| `ParentBrandProductId` | Used by mobile app for sample limit resolution (walks up to Brand) |
-| `ParentProductId` | Used by Product Hierarchy UI to render the parent-child tree |
+| `ParentProductId` | Drives the parent-child tree in the Product Hierarchy UI |
+| `ParentBrandProductId` | Used by the mobile app for sample limit resolution (walks up to Brand) |
 
-If `ParentProductId` is not set, country sub-brands appear as root-level nodes in the Product Hierarchy instead of nesting under their parent Brand.
-
-The fix script `scripts/fix-sub-brand-parent-hierarchy.apex` corrects this by setting `ParentProductId` on all country sub-brand and sample dosage `LifeSciMarketableProduct` records. The `scripts/create-marketable-products.apex` script has also been updated to set both fields on future runs.
+See [README-06](README-06-Parent-Child-Approaches.md) for details on how the hierarchy is structured.
 
 ### Why a Separate Sub-Brand Per Country?
 - **Product messages** (ProductGuidance) differ by country due to regulatory/compliance

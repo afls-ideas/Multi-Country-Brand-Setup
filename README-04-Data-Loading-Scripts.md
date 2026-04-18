@@ -507,6 +507,8 @@ Edit these files and update the corresponding scripts to match, then re-run.
 | `scripts/create-sample-allocations.apex` | Territory sample quotas | 8 per territory | TerritoryProdtQtyAllocation |
 | `scripts/create-sample-limits.apex` | Account sample limits | N accounts x 2 products | ProviderSampleLimit |
 | `scripts/delete-sample-data.apex` | Cleanup all sample data | — | All sample objects |
+| `scripts/create-product-guidance.apex` | Localized messages and objectives | 60 | ProductGuidance |
+| `scripts/fix-sub-brand-parent-hierarchy.apex` | Fix ParentProductId on sub-brands | — | LifeSciMarketableProduct |
 
 ---
 
@@ -519,3 +521,4 @@ Edit these files and update the corresponding scripts to match, then re-run.
 - [README-06: Parent-Child Approaches](README-06-Parent-Child-Approaches.md)
 - [README-07: Provider Account Territory Info](README-07-Provider-Account-Territory-Info.md)
 - [README-08: Sample Management Setup](README-08-Sample-Management-Setup.md)
+- [README-11: Product Messages & Objectives](README-11-Product-Messages-Objectives.md)
