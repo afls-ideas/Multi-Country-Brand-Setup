@@ -102,7 +102,7 @@ The script creates 60 `ProductGuidance` records — 3 messages and 2 objectives 
 
 All records have:
 - `EffectiveStartDate` = 2025-01-01
-- `EffectiveEndDate` = 2025-12-31
+- `EffectiveEndDate` = 2028-12-31
 - `IsActive` = true
 
 ### Localization
@@ -131,7 +131,53 @@ Objectives reference country-specific regulatory bodies and market context:
 
 ---
 
-## Running the Script
+## Sharing
+
+### Why Sharing Matters
+
+ProductGuidance has a **Private** Organization-Wide Default (OWD). This means records are only visible to the record owner unless explicitly shared. If you create ProductGuidance records as an admin, reps will **not** see them during Visit Engagement until you grant access.
+
+### Sharing Approaches
+
+There are three ways to make ProductGuidance records visible to reps:
+
+| Approach | Best For | How It Works |
+|----------|----------|--------------|
+| **Role Hierarchy** | Simple orgs with a clear management chain | If the record owner is above the rep in the role hierarchy, the rep inherits access automatically |
+| **Sharing Rules** | Scalable, criteria-based access | Create criteria-based sharing rules in Setup (e.g., share all records where `Country__c = 'GB'` with a public group containing GB reps) |
+| **Manual Shares (Apex)** | Script-based setup, full control | Insert `ProductGuidanceShare` records via Apex to grant specific users Read access |
+
+### Script-Based Sharing
+
+**Script:** `scripts/share-product-guidance.apex`
+
+This script creates `ProductGuidanceShare` records to grant Read access to reps based on their territory assignment:
+
+1. Queries `UserTerritory2Association` to build a map of users by country (territory names prefixed with country code, e.g., `GB-FSR-001-London`)
+2. Matches ProductGuidance records to countries by parsing the record Name (e.g., "Immunexis GB Message1" → GB)
+3. Creates `ProductGuidanceShare` records linking each guidance record to the appropriate country's reps
+
+```bash
+sf apex run --file scripts/share-product-guidance.apex --target-org {your_org}
+```
+
+The script is idempotent — it checks for existing manual shares before inserting.
+
+### Production Recommendation
+
+For production deployments, **criteria-based sharing rules** are the most maintainable approach:
+
+1. Add `Country__c` to `ProductGuidance` (already included in the create script)
+2. Create a **public group** per country (e.g., "GB Reps", "FR Reps")
+3. Create a **sharing rule**: "Share ProductGuidance where `Country__c = 'GB'` with public group 'GB Reps' — Read access"
+
+This way, new ProductGuidance records automatically become visible to the correct reps without running a script.
+
+---
+
+## Running the Scripts
+
+### Step 1: Create ProductGuidance Records
 
 **Prerequisites:**
 - Country sub-brand `LifeSciMarketableProduct` records exist (from `scripts/create-marketable-products.apex`)
@@ -143,7 +189,7 @@ sf apex run --file scripts/create-product-guidance.apex --target-org {your_org}
 
 The script is idempotent — it checks for existing records by `Name` and skips duplicates.
 
-### Expected Output
+**Expected Output:**
 
 ```
 Found: Cordim GB (CORDIM-GB) → 1KeHs0000010wBcKAI
@@ -157,6 +203,27 @@ PRODUCT GUIDANCE RECORDS
   Total:      60
 ============================================
 ```
+
+### Step 2: Share Records with Reps
+
+```bash
+sf apex run --file scripts/share-product-guidance.apex --target-org {your_org}
+```
+
+**Expected Output:**
+
+```
+============================================
+PRODUCT GUIDANCE SHARING
+  GB: 10 records → 1 reps
+  US: 10 records → 40 reps
+  FR: 10 records → 0 reps
+  ...
+  Shares created:     400
+============================================
+```
+
+Countries with no territory-assigned reps will show 0 — shares are created when reps are assigned to territories.
 
 ---
 
@@ -178,6 +245,17 @@ During a visit, when a rep selects a product for detailing:
 2. For each aligned product, it queries `ProductGuidance` where `ProductReferenceRecordId` matches and `IsActive = true` and the current date falls within the effective date range
 3. Messages appear as talking points the rep can mark as discussed
 4. Objectives appear as goals the rep can track progress against
+
+The screenshot below shows Visit Engagement on iPad for Immunexis GB. The three country-specific messages appear under the **Messages** section with a **Shared** toggle. The rep can mark each message as shared during the visit.
+
+![Visit Engagement — Immunexis GB Messages](images/visit-engagement-messages-immunexis-gb.png)
+
+> **Key observations:**
+> - **Product Details** (left panel) shows only the products aligned to the rep's territory — here Cordim GB and Immunexis GB
+> - **Messages** are the `Type = 'Message'` ProductGuidance records linked to the Immunexis GB `LifeSciMarketableProduct`
+> - The **Shared** toggle creates a `ProviderVisitDtlProductMsg` record when enabled
+> - **+ Add Discussion** lets the rep add free-text notes beyond the pre-defined messages
+> - **+ Add Next Visit Objective** links to Objective-type ProductGuidance records
 
 ### Call Discussion Records
 
@@ -222,7 +300,7 @@ For non-English countries, the Type word is localized in the Name (Objectif, Zie
 
 ### Effective Dates
 
-All records use a calendar-year range (2025-01-01 to 2025-12-31). In production, you would:
+All records use a calendar-year range (2025-01-01 to 2028-12-31). In production, you would:
 - Align to your commercial planning cycle (e.g., quarterly brand plans)
 - Expire outdated messages when new clinical data is available
 - Create new records for the next cycle rather than editing existing ones (for audit trail)
@@ -234,6 +312,69 @@ All records use a calendar-year range (2025-01-01 to 2025-12-31). In production,
 | Script | Creates | Records | Object |
 |--------|---------|---------|--------|
 | `scripts/create-product-guidance.apex` | Localized messages and objectives | 60 | ProductGuidance |
+| `scripts/share-product-guidance.apex` | Share records granting reps Read access | Varies by rep count | ProductGuidanceShare |
+
+---
+
+## Troubleshooting
+
+### Messages Don't Appear in Visit Engagement
+
+If a rep opens Visit Engagement and no messages or objectives appear for a product, work through these checks in order:
+
+**1. Is the ProductGuidance record shared with the rep?**
+
+ProductGuidance has **Private OWD**. Query `ProductGuidanceShare` to verify the rep has access:
+
+```apex
+SELECT Parent.Name, UserOrGroupId, AccessLevel, RowCause
+FROM ProductGuidanceShare
+WHERE Parent.Name LIKE 'Immunexis GB%'
+```
+
+If only the owner share exists, the rep cannot see the record. Run `scripts/share-product-guidance.apex` or create a sharing rule.
+
+**2. Is `IsActive` = true?**
+
+```apex
+SELECT Name, IsActive FROM ProductGuidance WHERE Name LIKE 'Immunexis GB%'
+```
+
+Inactive records are filtered out by the platform.
+
+**3. Is the current date within the effective date range?**
+
+```apex
+SELECT Name, EffectiveStartDate, EffectiveEndDate
+FROM ProductGuidance WHERE Name LIKE 'Immunexis GB%'
+```
+
+If `EffectiveEndDate` is in the past, the record won't appear. Update the date range or create new records for the current cycle.
+
+**4. Does `ProductReferenceRecordId` point to the correct sub-brand?**
+
+```apex
+SELECT Name, ProductReferenceRecordId, ProductReferenceRecord.Name
+FROM ProductGuidance WHERE Name LIKE 'Immunexis GB%'
+```
+
+The reference must point to the **country sub-brand** `LifeSciMarketableProduct` (e.g., "Immunexis GB"), not the global brand ("Immunexis") or a `Product2` record. Visit Engagement resolves messages through the territory-aligned `LifeSciMarketableProduct`.
+
+**5. Is the product aligned to the rep's territory?**
+
+```apex
+SELECT Product.Name, Territory2.Name
+FROM ProductTerritoryAvailability
+WHERE Product.Name = 'Immunexis GB'
+```
+
+If no `ProductTerritoryAvailability` record exists for the sub-brand and the rep's territory, the product won't appear in the visit at all — and neither will its messages.
+
+**6. Does the rep have the correct permission set?**
+
+The rep's permission set must include Read access to:
+- `ProductGuidance` object
+- Fields: `Name`, `ContentText`, `Type`, `Priority`, `EffectiveStartDate`, `EffectiveEndDate`, `IsActive`, `ProductReferenceRecordId`
 
 ---
 

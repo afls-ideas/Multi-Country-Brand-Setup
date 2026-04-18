@@ -458,7 +458,7 @@ System.debug('Found ' + existingNames.size() + ' existing guidance records.');
 
 List<ProductGuidance> toInsert = new List<ProductGuidance>();
 Date startDate = Date.newInstance(2025, 1, 1);
-Date endDate = Date.newInstance(2025, 12, 31);
+Date endDate = Date.newInstance(2028, 12, 31);
 
 // Messages
 for (String code : messages.keySet()) {
