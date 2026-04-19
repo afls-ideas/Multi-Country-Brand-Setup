@@ -178,18 +178,49 @@ if (!newWhBatchItems.isEmpty()) {
 }
 
 // -----------------------------------------------------------
-// 4. CREATE PRODUCT TRANSFERS
+// 4. CREATE INVENTORY OPERATION + SHIPMENT + PRODUCT TRANSFERS
 // -----------------------------------------------------------
 
+// Look up the rep's destination address
+List<Schema.Address> destAddresses = [
+    SELECT Id FROM Address WHERE ParentId = :destLocationId LIMIT 1
+];
+Id destAddressId = destAddresses.isEmpty() ? null : destAddresses[0].Id;
+
+// Create the InventoryOperation (TransferIn) — this is what
+// the Sample Inventory Management UI renders
+InventoryOperation invOp = new InventoryOperation(
+    OperationType = 'TransferIn',
+    SourceLocationId = sourceLocationId,
+    DestinationLocationId = destLocationId,
+    DestinationAddressId = destAddressId,
+    ShipmentStatus = 'Shipped',
+    Status = 'Completed',
+    OwnerId = repUserId
+);
+insert invOp;
+System.debug('Created InventoryOperation: ' + invOp.Id);
+
+// Create a Shipment to group the line items
+Shipment ship = new Shipment(
+    ShipToName = repName,
+    SourceLocationId = sourceLocationId,
+    DestinationLocationId = destLocationId,
+    OwnerId = repUserId
+);
+insert ship;
+System.debug('Created Shipment: ' + ship.Id);
+
+// Create ProductTransfer records linked to both
 List<ProductTransfer> transfers = new List<ProductTransfer>();
 
 for (ProductionBatch pb : batches) {
     ProductItem whPi = existingWhItems.get(pb.ProductId);
 
     transfers.add(new ProductTransfer(
-        SourceLocationId = sourceLocationId,
+        InventoryOperationId = invOp.Id,
+        ShipmentId = ship.Id,
         DestinationLocationId = destLocationId,
-        SourceProductItemId = whPi.Id,
         Product2Id = pb.ProductId,
         ProductionBatchId = pb.Id,
         QuantitySent = SHIPMENT_QTY,
@@ -219,7 +250,35 @@ if (!transfers.isEmpty()) {
 }
 
 // -----------------------------------------------------------
-// 5. VERIFY INVENTORY CHANGES
+// 5. CREATE SHIPMENT ITEMS
+// -----------------------------------------------------------
+// ShipmentItem records are the line items that appear on the
+// Shipment detail page and drive the "Received Inventory
+// Acknowledgements" panel on Sample Inventory Management.
+
+// Aggregate qty per product (multiple batches → one shipment item)
+Map<Id, Decimal> qtyByProduct = new Map<Id, Decimal>();
+Map<Id, String> nameByProduct = new Map<Id, String>();
+for (ProductionBatch pb : batches) {
+    Decimal existing = qtyByProduct.containsKey(pb.ProductId) ? qtyByProduct.get(pb.ProductId) : 0;
+    qtyByProduct.put(pb.ProductId, existing + SHIPMENT_QTY);
+    nameByProduct.put(pb.ProductId, pb.Product.Name);
+}
+
+List<ShipmentItem> shipItems = new List<ShipmentItem>();
+for (Id pid : qtyByProduct.keySet()) {
+    shipItems.add(new ShipmentItem(
+        ShipmentId = ship.Id,
+        Product2Id = pid,
+        Quantity = qtyByProduct.get(pid)
+    ));
+    System.debug('  ShipmentItem: ' + nameByProduct.get(pid) + ' qty=' + qtyByProduct.get(pid));
+}
+insert shipItems;
+System.debug('Created ' + shipItems.size() + ' ShipmentItem records.');
+
+// -----------------------------------------------------------
+// 6. VERIFY INVENTORY CHANGES
 // -----------------------------------------------------------
 
 // Re-query to see if quantities were updated

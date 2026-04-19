@@ -205,67 +205,88 @@ sf apex run --file scripts/create-inventory-count-discrepancy.apex --target-org 
 
 ## Sample Shipment (Product Transfer)
 
-A `ProductTransfer` models a shipment of samples from a warehouse to a rep's inventory. When the transfer is marked as received, the platform automatically increments `ProductItem.QuantityOnHand` at the destination.
+A sample shipment models the flow of samples from a warehouse to a rep's inventory. When the rep receives the shipment, the platform automatically increments `ProductItem.QuantityOnHand`. The shipment appears in the "Received Inventory Acknowledgements" panel on the Sample Inventory Management page and as "Transfer In" entries in the Inventory Operations Timeline.
 
 ### Objects Involved
 
-```mermaid
-graph LR
-    WH["Warehouse<br/><i>Location</i>"] -->|"ProductTransfer<br/>qty=100"| REP["Rep Inventory<br/><i>Location</i>"]
+A complete shipment requires **four objects** working together:
 
-    style WH fill:#9b59b6,color:#fff
-    style REP fill:#2ecc71,color:#fff
+```mermaid
+graph TD
+    IO["InventoryOperation<br/><i>type = TransferIn</i>"] -->|"groups"| PT["ProductTransfer<br/><i>one per batch</i>"]
+    SHIP["Shipment"] -->|"groups"| PT
+    SHIP -->|"line items"| SI["ShipmentItem<br/><i>one per product</i>"]
+    PT -->|"increments"| PI["ProductItem<br/><i>QuantityOnHand</i>"]
+
+    style IO fill:#e74c3c,color:#fff
+    style SHIP fill:#9b59b6,color:#fff
+    style PT fill:#f5a623,color:#fff
+    style SI fill:#4a90d9,color:#fff
+    style PI fill:#2ecc71,color:#fff
 ```
 
-| Object | Purpose |
-|--------|---------|
-| `ProductTransfer` | One record per product/batch being shipped |
-| `Location` (warehouse) | Source — must have its own `ProductItem` and `ProductBatchItem` records |
-| `Location` (rep) | Destination — rep's inventory location |
+| Object | Purpose | Records Created |
+|--------|---------|-----------------|
+| `InventoryOperation` | Drives the UI — appears in Inventory Operations Timeline and "Received Inventory Acknowledgements" | 1 per shipment |
+| `Shipment` | Groups the transfers and provides shipping details | 1 per shipment |
+| `ShipmentItem` | Line items on the shipment (what the rep sees in the Details table) | 1 per product |
+| `ProductTransfer` | The actual inventory movement — triggers `QuantityOnHand` increment | 1 per batch |
 
-### Key Fields on ProductTransfer
+### Why InventoryOperation Is Required
+
+Creating `ProductTransfer` records alone **does** move inventory (QuantityOnHand is incremented), but the transfer will **not appear** in:
+- The "Received Inventory Acknowledgements" panel
+- The Inventory Operations Timeline
+- The "Transfer In" detail page
+
+These UI components query `InventoryOperation`, not `ProductTransfer` directly. The `ProductTransfer.InventoryOperationId` field links transfers to their parent operation.
+
+### What It Looks Like
+
+A completed Transfer In as seen by the GB rep:
+
+![Transfer In — GB rep receives shipment from warehouse](images/transfer-in-gb-rep.png)
+
+The Transfer In detail page shows:
+- **Status / Source Location / Destination Address / Shipment Status** in the header
+- **Shipping Details** — Shipment Number, Ship To Name, Shipping Provider, Tracking Number
+- **Details table** — each product with batch number and quantity received
+
+### Key Fields
+
+**InventoryOperation:**
 
 | Field | Type | Notes |
 |-------|------|-------|
+| `OperationType` | Picklist | `TransferIn` for incoming shipments |
 | `SourceLocationId` | Lookup(Location) | Warehouse location |
 | `DestinationLocationId` | Lookup(Location) | Rep's inventory location |
-| `SourceProductItemId` | Lookup(ProductItem) | **Required** — the warehouse's ProductItem for this product |
+| `DestinationAddressId` | Lookup(Address) | Rep's storage address (displayed in header) |
+| `ShipmentStatus` | Picklist | `Created`, `Shipped`, `In Transit`, `Voided`, `Deliver` |
+| `Status` | Picklist | `Draft`, `In Progress`, `Submitted`, `Completed` |
+
+**ProductTransfer:**
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `InventoryOperationId` | Lookup | Links to the parent InventoryOperation |
+| `ShipmentId` | Lookup(Shipment) | Links to the Shipment |
+| `DestinationLocationId` | Lookup(Location) | Rep's inventory location |
 | `Product2Id` | Lookup(Product2) | The product being shipped |
-| `ProductionBatchId` | Lookup(ProductionBatch) | The specific batch/lot being shipped |
+| `ProductionBatchId` | Lookup(ProductionBatch) | The specific batch/lot |
 | `QuantitySent` | Decimal | Units shipped |
-| `QuantityReceived` | Decimal | Units received (may differ from sent) |
+| `QuantityReceived` | Decimal | Units received |
 | `IsReceived` | Boolean | Set to `true` to trigger inventory increment |
-| `ReceivedById` | Lookup(User) | The rep who received the shipment |
-| `ReceivedDateTime` | DateTime | When the shipment was received |
-| `ShipmentStatus` | Picklist | Read-only — `Created`, `Shipped`, `In Transit`, `Voided`, `Delivered` |
+
+> **Important:** When a ProductTransfer is linked to a TransferIn InventoryOperation, you **cannot** set `SourceLocationId` on the ProductTransfer — the source is defined on the InventoryOperation. Setting both causes the error: *"You can't select a source location when the inventory operation type is Transfer In."*
 
 ### Warehouse Setup
 
-The warehouse must have its own inventory records before transfers can be created:
+The warehouse must have its own inventory records. The script creates these automatically:
 
 1. **Location** with `LocationType = 'Warehouse'` and `IsInventoryLocation = true`
-2. **ProductItem** per product — the warehouse's stock of that product
+2. **ProductItem** per product — the warehouse's stock (set to 100,000 for demo purposes)
 3. **ProductBatchItem** per batch — links each production batch to the warehouse's inventory
-
-The script creates these automatically if they don't exist.
-
-### What Happens on Receipt
-
-When `IsReceived = true` and `QuantityReceived` is set:
-
-1. The platform **increments** `ProductItem.QuantityOnHand` at the destination by `QuantityReceived`
-2. The platform **decrements** `ProductItem.QuantityOnHand` at the source by `QuantitySent`
-3. A `ProductItemTransaction` record is created for audit trail (visible in the History panel during inventory counts)
-
-### Example: GB Rep Receives 100 Units Per Batch
-
-| Product | Before | After | Change |
-|---------|--------|-------|--------|
-| Cordim 10mg | 3994 | 4094 | +100 (1 batch) |
-| Cordim GB 20mg | 1973 | 2173 | +200 (2 batches × 100) |
-| Cordim GB 5mg | 2000 | 2200 | +200 (2 batches × 100) |
-| Immunexis GB 10mg | 2000 | 2200 | +200 (2 batches × 100) |
-| Immunexis GB 25mg | 2000 | 2200 | +200 (2 batches × 100) |
 
 ### Script
 
@@ -286,10 +307,11 @@ sf apex run --file scripts/create-sample-shipment.apex --target-org {your_org}
 **What it does:**
 
 1. Looks up the rep and their inventory location
-2. Finds or creates a warehouse Location
-3. Creates warehouse `ProductItem` and `ProductBatchItem` records (source inventory)
-4. Creates one `ProductTransfer` per active production batch with `IsReceived = true`
-5. Platform auto-increments rep's `ProductItem.QuantityOnHand`
+2. Finds or creates a warehouse Location with ProductItem and ProductBatchItem records
+3. Creates an `InventoryOperation` (type = TransferIn, status = Completed)
+4. Creates a `Shipment` with `ShipmentItem` records (one per product)
+5. Creates one `ProductTransfer` per active production batch, linked to both the InventoryOperation and Shipment
+6. Platform auto-increments rep's `ProductItem.QuantityOnHand`
 
 ---
 
@@ -329,7 +351,7 @@ The Details table may not render for assessments in `Assigned` or `InProgress` s
 |--------|---------|-------------|
 | `scripts/create-inventory-count.apex` | Matching count | All actuals = expected, no discrepancies |
 | `scripts/create-inventory-count-discrepancy.apex` | Discrepancy count | Configurable per-product discrepancies (short, over, match) |
-| `scripts/create-sample-shipment.apex` | Sample shipment | Warehouse → rep transfer, auto-increments inventory |
+| `scripts/create-sample-shipment.apex` | Sample shipment | InventoryOperation + Shipment + ProductTransfer, auto-increments inventory |
 
 ---
 
