@@ -241,9 +241,13 @@ Creating `ProductTransfer` records alone **does** move inventory (QuantityOnHand
 
 These UI components query `InventoryOperation`, not `ProductTransfer` directly. The `ProductTransfer.InventoryOperationId` field links transfers to their parent operation.
 
-### What It Looks Like
+### Where It Appears
 
-A completed Transfer In as seen by the GB rep:
+On the **Sample Inventory Management** page, the Inventory Operations Timeline (right panel) shows all inventory operations — Transfer In, Disbursement, Adjustment, etc. Each Transfer In entry shows the source warehouse, product count, and status:
+
+![Inventory Operations Timeline — Transfer In from GB Sample Warehouse](images/inventory-operations-timeline-gb.png)
+
+Clicking a Transfer In entry opens the detail page:
 
 ![Transfer In — GB rep receives shipment from warehouse](images/transfer-in-gb-rep.png)
 
