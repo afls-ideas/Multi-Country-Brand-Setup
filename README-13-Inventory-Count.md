@@ -203,6 +203,96 @@ sf apex run --file scripts/create-inventory-count-discrepancy.apex --target-org 
 
 ---
 
+## Sample Shipment (Product Transfer)
+
+A `ProductTransfer` models a shipment of samples from a warehouse to a rep's inventory. When the transfer is marked as received, the platform automatically increments `ProductItem.QuantityOnHand` at the destination.
+
+### Objects Involved
+
+```mermaid
+graph LR
+    WH["Warehouse<br/><i>Location</i>"] -->|"ProductTransfer<br/>qty=100"| REP["Rep Inventory<br/><i>Location</i>"]
+
+    style WH fill:#9b59b6,color:#fff
+    style REP fill:#2ecc71,color:#fff
+```
+
+| Object | Purpose |
+|--------|---------|
+| `ProductTransfer` | One record per product/batch being shipped |
+| `Location` (warehouse) | Source — must have its own `ProductItem` and `ProductBatchItem` records |
+| `Location` (rep) | Destination — rep's inventory location |
+
+### Key Fields on ProductTransfer
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `SourceLocationId` | Lookup(Location) | Warehouse location |
+| `DestinationLocationId` | Lookup(Location) | Rep's inventory location |
+| `SourceProductItemId` | Lookup(ProductItem) | **Required** — the warehouse's ProductItem for this product |
+| `Product2Id` | Lookup(Product2) | The product being shipped |
+| `ProductionBatchId` | Lookup(ProductionBatch) | The specific batch/lot being shipped |
+| `QuantitySent` | Decimal | Units shipped |
+| `QuantityReceived` | Decimal | Units received (may differ from sent) |
+| `IsReceived` | Boolean | Set to `true` to trigger inventory increment |
+| `ReceivedById` | Lookup(User) | The rep who received the shipment |
+| `ReceivedDateTime` | DateTime | When the shipment was received |
+| `ShipmentStatus` | Picklist | Read-only — `Created`, `Shipped`, `In Transit`, `Voided`, `Delivered` |
+
+### Warehouse Setup
+
+The warehouse must have its own inventory records before transfers can be created:
+
+1. **Location** with `LocationType = 'Warehouse'` and `IsInventoryLocation = true`
+2. **ProductItem** per product — the warehouse's stock of that product
+3. **ProductBatchItem** per batch — links each production batch to the warehouse's inventory
+
+The script creates these automatically if they don't exist.
+
+### What Happens on Receipt
+
+When `IsReceived = true` and `QuantityReceived` is set:
+
+1. The platform **increments** `ProductItem.QuantityOnHand` at the destination by `QuantityReceived`
+2. The platform **decrements** `ProductItem.QuantityOnHand` at the source by `QuantitySent`
+3. A `ProductItemTransaction` record is created for audit trail (visible in the History panel during inventory counts)
+
+### Example: GB Rep Receives 100 Units Per Batch
+
+| Product | Before | After | Change |
+|---------|--------|-------|--------|
+| Cordim 10mg | 3994 | 4094 | +100 (1 batch) |
+| Cordim GB 20mg | 1973 | 2173 | +200 (2 batches × 100) |
+| Cordim GB 5mg | 2000 | 2200 | +200 (2 batches × 100) |
+| Immunexis GB 10mg | 2000 | 2200 | +200 (2 batches × 100) |
+| Immunexis GB 25mg | 2000 | 2200 | +200 (2 batches × 100) |
+
+### Script
+
+**Script:** `scripts/create-sample-shipment.apex`
+
+```bash
+sf apex run --file scripts/create-sample-shipment.apex --target-org {your_org}
+```
+
+**Configurable variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TERRITORY_DEV_NAME` | `GB_FSR_001_London` | Target territory |
+| `WAREHOUSE_NAME` | `GB Sample Warehouse` | Source warehouse (created if not found) |
+| `SHIPMENT_QTY` | `100` | Quantity per product/batch |
+
+**What it does:**
+
+1. Looks up the rep and their inventory location
+2. Finds or creates a warehouse Location
+3. Creates warehouse `ProductItem` and `ProductBatchItem` records (source inventory)
+4. Creates one `ProductTransfer` per active production batch with `IsReceived = true`
+5. Platform auto-increments rep's `ProductItem.QuantityOnHand`
+
+---
+
 ## Platform Constraints
 
 - **One Initial count per location** — the `Initial` type can only be used once per location. Use `Periodic`, `Adhoc`, or `Audited` for subsequent counts
@@ -239,6 +329,7 @@ The Details table may not render for assessments in `Assigned` or `InProgress` s
 |--------|---------|-------------|
 | `scripts/create-inventory-count.apex` | Matching count | All actuals = expected, no discrepancies |
 | `scripts/create-inventory-count-discrepancy.apex` | Discrepancy count | Configurable per-product discrepancies (short, over, match) |
+| `scripts/create-sample-shipment.apex` | Sample shipment | Warehouse → rep transfer, auto-increments inventory |
 
 ---
 
