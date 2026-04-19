@@ -1,34 +1,5 @@
 # Provider Account Territory Info (PATI)
 
-## Where Does a Custom Field Belong?
-
-When adding a new attribute to describe an account, use this decision flow to determine whether it belongs on the **Account** record or on the **PATI** record:
-
-```mermaid
-flowchart TD
-    Q["New field"]
-    Q --> D{"Differs by<br/>territory?"}
-    D -->|Yes| PATI["PATI"]
-    D -->|No| ACCT["Account"]
-
-    style Q fill:#4a90d9,color:#fff
-    style D fill:#f5a623,color:#fff
-    style PATI fill:#2ecc71,color:#fff
-    style ACCT fill:#9b59b6,color:#fff
-```
-
-| PATI (territory-specific) | Account (universal) |
-|---------------------------|---------------------|
-| Is Targeted Account | NPI Number |
-| Preferred Visit Address | Specialty |
-| Next Visit Date | Mailing Address |
-| Call Frequency | License Status |
-| Territory Priority Tier | Date of Birth |
-
-**The key question:** if two territories both see the same account, could they need different values for this attribute? If yes, the attribute belongs on PATI. If the value is the same regardless of who is looking, it belongs on Account.
-
----
-
 ## What Is ProviderAcctTerritoryInfo?
 
 `ProviderAcctTerritoryInfo` (PATI) is the **intersection object** between an Account (healthcare provider) and a Territory. It represents how a specific territory views and interacts with a specific account.
@@ -63,6 +34,31 @@ Any data that describes the **relationship between a territory and an account** 
 The same principle applies to: targeted account status, preferred visit address, visit counts, and any custom territory-specific fields you add.
 
 > **Rule of thumb:** If the value could differ depending on which rep/territory is looking at the account, it belongs on PATI. If it's a fact about the account itself (NPI number, specialty, address), it belongs on Account.
+
+### Where Does a Custom Field Belong?
+
+When adding a new attribute to describe an account, use this decision flow:
+
+```mermaid
+flowchart TD
+    Q["New field"]
+    Q --> D{"Differs by<br/>territory?"}
+    D -->|Yes| PATI["PATI"]
+    D -->|No| ACCT["Account"]
+
+    style Q fill:#4a90d9,color:#fff
+    style D fill:#f5a623,color:#fff
+    style PATI fill:#2ecc71,color:#fff
+    style ACCT fill:#9b59b6,color:#fff
+```
+
+| PATI (territory-specific) | Account (universal) |
+|---------------------------|---------------------|
+| Is Targeted Account | NPI Number |
+| Preferred Visit Address | Specialty |
+| Next Visit Date | Mailing Address |
+| Call Frequency | License Status |
+| Territory Priority Tier | Date of Birth |
 
 ### How PATI Controls Account Visibility
 
