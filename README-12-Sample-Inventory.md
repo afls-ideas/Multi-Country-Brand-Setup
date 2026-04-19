@@ -79,6 +79,59 @@ Each rep needs a `Location` record before ProductItem records can be created:
 
 > **Note:** In the demo org, Location records are typically pre-created when setting up the rep user. The inventory script checks for an existing location and errors if one is not found.
 
+### How Inventory Gets Initialized
+
+There are two approaches to putting initial stock into a rep's inventory:
+
+#### Approach 1: Direct Creation (Demo / Development)
+
+Create `ProductItem` records directly with a starting `QuantityOnHand`. This is what our scripts do — `create-sample-inventory.apex` inserts ProductItem records with `QuantityOnHand = 1000` at the rep's Location.
+
+```mermaid
+graph LR
+    S["Script"] -->|"creates ProductItem<br/>QuantityOnHand = 1000"| PI["Rep's Inventory"]
+
+    style S fill:#4a90d9,color:#fff
+    style PI fill:#2ecc71,color:#fff
+```
+
+This is fine for demos and development but skips the audit trail of where stock came from.
+
+#### Approach 2: Transfer Order / Shipment (Production)
+
+In production, reps receive inventory through the **Transfer Order** flow, which models the physical shipment of samples from a warehouse to the rep:
+
+```mermaid
+graph LR
+    WH["Warehouse<br/><i>Location</i>"] -->|"TransferOrder +<br/>TransferOrderItem"| SHIP["Shipment"] -->|"Rep receives<br/>and confirms"| PI["Rep's Inventory<br/><i>ProductItem.QuantityOnHand<br/>incremented</i>"]
+
+    style WH fill:#9b59b6,color:#fff
+    style SHIP fill:#f5a623,color:#fff
+    style PI fill:#2ecc71,color:#fff
+```
+
+The objects involved:
+
+| Object | Purpose |
+|--------|---------|
+| `Location` (warehouse) | The distribution center that holds bulk stock |
+| `TransferOrder` | Header record for a shipment from warehouse to rep |
+| `TransferOrderItem` | Line item — which product and quantity is being shipped |
+| `Location` (rep) | The rep's inventory location that receives the shipment |
+
+When the rep confirms receipt, the platform increments `QuantityOnHand` on the rep's `ProductItem`. This creates a full chain of custody: **warehouse → shipment → rep inventory** — required for compliance in regulated markets (e.g., PDMA in the US).
+
+#### Which Approach to Use
+
+| | Direct Creation | Transfer Order |
+|---|---|---|
+| **Use when** | Demos, development, initial data load | Production deployments |
+| **Audit trail** | None — stock appears from nothing | Full — every unit traced from warehouse |
+| **Compliance** | Not suitable for regulated markets | Required for PDMA, EU sample tracking |
+| **Setup effort** | One script | Warehouse Location + Transfer Order flow |
+
+Our scripts use Approach 1. In production, you would set up the Transfer Order flow and use it for all inventory replenishment after the initial load.
+
 ---
 
 ## ProductionBatch — Lot Tracking
