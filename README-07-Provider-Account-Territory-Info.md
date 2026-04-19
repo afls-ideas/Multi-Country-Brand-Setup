@@ -1,5 +1,31 @@
 # Provider Account Territory Info (PATI)
 
+## Where Does a Custom Field Belong?
+
+When adding a new attribute to describe an account, use this decision flow to determine whether it belongs on the **Account** record or on the **PATI** record:
+
+```mermaid
+flowchart TD
+    Q["New attribute for an account"]
+    Q --> D{"Can the value differ<br/>from territory to territory?"}
+    D -->|Yes| PATI["Put it on <b>ProviderAcctTerritoryInfo</b><br/><i>Territory-specific view of the account</i>"]
+    D -->|No| ACCT["Put it on <b>Account</b><br/><i>Universal fact about the account</i>"]
+
+    PATI --> EX1["Examples:<br/>• Is Targeted Account<br/>• Preferred Visit Address<br/>• Next Visit Date<br/>• Call Frequency<br/>• Territory Priority Tier"]
+    ACCT --> EX2["Examples:<br/>• NPI Number<br/>• Specialty<br/>• Mailing Address<br/>• License Status<br/>• Date of Birth"]
+
+    style Q fill:#4a90d9,color:#fff
+    style D fill:#f5a623,color:#fff
+    style PATI fill:#2ecc71,color:#fff
+    style ACCT fill:#9b59b6,color:#fff
+    style EX1 fill:#2ecc71,color:#fff,stroke:#2ecc71
+    style EX2 fill:#9b59b6,color:#fff,stroke:#9b59b6
+```
+
+**The key question:** if two territories both see the same account, could they need different values for this attribute? If yes, the attribute belongs on PATI. If the value is the same regardless of who is looking, it belongs on Account.
+
+---
+
 ## What Is ProviderAcctTerritoryInfo?
 
 `ProviderAcctTerritoryInfo` (PATI) is the **intersection object** between an Account (healthcare provider) and a Territory. It represents how a specific territory views and interacts with a specific account.

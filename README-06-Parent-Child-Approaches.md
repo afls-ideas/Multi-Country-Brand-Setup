@@ -57,18 +57,6 @@ Think of Product2 as the **definition** and LifeSciMarketableProduct as the **ac
 
 ---
 
-## Historical Note: ParentProduct__c
-
-This project originally used a custom `ParentProduct__c` lookup on Product2 to model the hierarchy. This field has been removed because:
-
-1. The LSC Product Hierarchy UI does not read Product2 parent-child relationships
-2. The mobile app resolves sample limits via `LifeSciMarketableProduct.ParentBrandProductId`, not Product2
-3. Maintaining parallel hierarchies on both objects adds confusion with no functional benefit
-
-The hierarchy now lives exclusively on `LifeSciMarketableProduct`, which is where LSC expects it.
-
----
-
 ## Deployed Metadata
 
 | Component | Path | Status |
