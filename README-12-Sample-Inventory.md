@@ -31,7 +31,67 @@ Before creating inventory records, the following must already exist:
 1. **Sample-level Product2 records** (Family = 'Sample') — from `scripts/create-products.apex`
 2. **Sample-level LifeSciMarketableProduct records** (Type = 'Product') — from `scripts/create-sample-marketable-products.apex`
 3. **Territory assignments** — rep assigned to territory via `UserTerritory2Association`
-4. **Rep inventory location** — a `Location` record with `LocationType = 'User Inventory'` and `PrimaryUserId` set to the rep
+4. **Rep inventory location** — see [Inventory Location Setup](#inventory-location-setup) below
+
+---
+
+## Inventory Location Setup
+
+Each rep needs an **inventory Location** before they can receive or hold sample stock. The platform enforces a **one location per rep** constraint — you cannot create a second inventory location for the same user.
+
+**Script:** `scripts/create-inventory-location.apex`
+
+```bash
+sf apex run --file scripts/create-inventory-location.apex --target-org {your_org}
+```
+
+**Configurable variables:**
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `TERRITORY_DEV_NAME` | `GB_FSR_001_London` | Target territory — the rep is looked up from this |
+| `ADDR_STREET` | `42 Harley Street` | Inventory storage street address |
+| `ADDR_CITY` | `London` | City |
+| `ADDR_POSTCODE` | `W1G 9PR` | Postal code |
+| `ADDR_COUNTRY` | `United Kingdom` | Country |
+
+**What it creates:**
+
+| Object | Record | Purpose |
+|--------|--------|---------|
+| `Location` | 1 per rep | The rep's inventory location (`LocationType = 'User Inventory'`) |
+| `Address` | 1 per location | The physical storage address displayed on the Sample Inventory Management page |
+
+The script is idempotent — if the rep already has an inventory location, it updates the name and address rather than creating a new one.
+
+### Location Object — Key Fields
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `Name` | String | Yes | Display name (e.g., "Andrew Whitaker Inventory") |
+| `LocationType` | Picklist | Yes | Must be `User Inventory` for sample management |
+| `PrimaryUserId` | Lookup(User) | Yes | The rep who owns this inventory |
+| `IsInventoryLocation` | Boolean | Yes | Must be `true` — cannot be set to `false` while `PrimaryUserId` is set |
+
+### Address Object — Key Fields
+
+The `Address` record is a child of the `Location` and provides the **Inventory Storage Address** shown on the Sample Inventory Management page.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `ParentId` | Lookup(Location) | The rep's inventory location |
+| `Street` | String | Street address |
+| `City` | String | City |
+| `State` | String | State/Province (leave blank for countries that don't use states, e.g., UK) |
+| `PostalCode` | String | Postal/ZIP code |
+| `Country` | String | Country name |
+| `AddressType` | Picklist | Set to `Mailing` |
+
+### Platform Constraints
+
+- **One location per rep** — attempting to create a second `Location` with the same `PrimaryUserId` fails with: *"The user is already assigned to a location."*
+- **Cannot deactivate** — setting `IsInventoryLocation = false` or clearing `PrimaryUserId` fails with validation errors while the location has dependent records (ProductItems, InventoryCounts)
+- **To change the address**, update the existing `Address` record rather than deleting and recreating
 
 ---
 
@@ -232,6 +292,14 @@ The `OwnerId` on the allocation record **must be the rep assigned to the territo
 
 ## Running the Scripts
 
+### Step 0: Create Inventory Location
+
+```bash
+sf apex run --file scripts/create-inventory-location.apex --target-org {your_org}
+```
+
+This must be done before creating inventory items. See [Inventory Location Setup](#inventory-location-setup) above for details.
+
 ### Step 1: Create Rep Inventory
 
 ```bash
@@ -346,15 +414,17 @@ Sample inventory is **Steps 3–5** of the sample management setup. The full seq
 flowchart LR
     S1["Step 1<br/><b>Sample Marketable<br/>Products</b>"]
     S2["Step 2<br/><b>Territory Alignment<br/>+ Batch Job</b>"]
+    S2b["Step 2b<br/><b>Inventory Location</b><br/><i>Location + Address</i>"]
     S3["Step 3<br/><b>Rep Inventory</b><br/><i>ProductItem</i>"]
     S4["Step 4<br/><b>Production Batches</b><br/><i>ProductionBatch +<br/>ProductBatchItem</i>"]
     S5["Step 5<br/><b>Allocations</b><br/><i>TerritoryProdtQty<br/>Allocation</i>"]
     S6["Step 6<br/><b>Sample Limits</b><br/><i>(README-08)</i>"]
 
-    S1 --> S2 --> S3 --> S4 --> S5 --> S6
+    S1 --> S2 --> S2b --> S3 --> S4 --> S5 --> S6
 
     style S1 fill:#ccc,color:#333
     style S2 fill:#ccc,color:#333
+    style S2b fill:#2ecc71,color:#fff
     style S3 fill:#2ecc71,color:#fff
     style S4 fill:#2ecc71,color:#fff
     style S5 fill:#2ecc71,color:#fff
@@ -459,6 +529,7 @@ Increase `AllocatedQuantity` or create a new allocation for the next time period
 
 | Script | Creates | Object |
 |--------|---------|--------|
+| `scripts/create-inventory-location.apex` | Rep inventory location + address | Location, Address |
 | `scripts/create-sample-inventory.apex` | Rep inventory items | ProductItem |
 | `scripts/create-sample-production-batches.apex` | Production lots + junction records | ProductionBatch, ProductBatchItem |
 | `scripts/create-sample-allocations.apex` | Territory distribution quotas | TerritoryProdtQtyAllocation |
