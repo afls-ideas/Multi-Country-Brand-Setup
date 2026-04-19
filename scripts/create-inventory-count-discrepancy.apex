@@ -157,7 +157,11 @@ for (Integer i = 0; i < productItems.size(); i++) {
     else if (discrepancy > 0) marker = ' *** OVER by ' + discrepancy + ' ***';
     else marker = ' (matches)';
 
-    icpItems.add(new InventoryCountProductItem(
+    String reasonType = null;
+    if (discrepancy < 0) reasonType = 'Lost';
+    else if (discrepancy > 0) reasonType = 'Overcount';
+
+    InventoryCountProductItem icp = new InventoryCountProductItem(
         InventoryCountAssessmentId = ica.Id,
         ProductItemId = pi.Id,
         AssigneeId = repUserId,
@@ -168,7 +172,11 @@ for (Integer i = 0; i < productItems.size(); i++) {
         ExpectedQuantity = expectedQty,
         ActualQuantity = actualQty,
         Status = 'Complete'
-    ));
+    );
+    if (reasonType != null) {
+        icp.DiscrepancyReasonType = reasonType;
+    }
+    icpItems.add(icp);
     System.debug('  ' + pi.Product2.Name + ': expected=' + expectedQty
         + ' actual=' + actualQty + marker);
 }
@@ -203,7 +211,11 @@ for (ProductBatchItem pbi : batchItems) {
         if (actualQty < 0) actualQty = 0;
     }
 
-    icbItems.add(new InventoryCntProdtBatchItem(
+    String reasonType = null;
+    if (actualQty < expectedQty) reasonType = 'Lost';
+    else if (actualQty > expectedQty) reasonType = 'Overcount';
+
+    InventoryCntProdtBatchItem icb = new InventoryCntProdtBatchItem(
         InventoryCountAssessmentId = ica.Id,
         ProductBatchItemId = pbi.Id,
         ProductId = pbi.ProductItem.Product2Id,
@@ -212,7 +224,11 @@ for (ProductBatchItem pbi : batchItems) {
         ExpectedQuantity = expectedQty,
         ActualQuantity = actualQty,
         Status = 'Completed'
-    ));
+    );
+    if (reasonType != null) {
+        icb.DiscrepancyReasonType = reasonType;
+    }
+    icbItems.add(icb);
 
     String marker = (actualQty != expectedQty) ?
         ' *** DISCREPANCY: ' + (actualQty - expectedQty) + ' ***' : '';

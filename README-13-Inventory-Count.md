@@ -49,6 +49,7 @@ erDiagram
 | `ProductItemId` | Lookup(ProductItem) | The inventory being counted |
 | `ExpectedQuantity` | Decimal | System's expected quantity |
 | `ActualQuantity` | Decimal | Rep's counted quantity |
+| `DiscrepancyReasonType` | Picklist | Same values as batch-level |
 | `Status` | Picklist | `Assigned`, `In_Progress`, `Complete`, `Inactive` |
 
 **InventoryCntProdtBatchItem (batch-level):**
@@ -61,6 +62,8 @@ erDiagram
 | `ProductId` | Lookup(Product2) | **Required** — must be set for the UI to display batch data in the Details table |
 | `ExpectedQuantity` | Decimal | System's expected quantity |
 | `ActualQuantity` | Decimal | Rep's counted quantity |
+| `IsDiscrepancyInQuantity` | Boolean | Read-only — auto-set by platform when actual ≠ expected |
+| `DiscrepancyReasonType` | Picklist | Damage, Theft, Expiry, Misplacement, Overcount, Undercount, Mismatch, Lost, Adjustment, Other |
 | `Status` | Picklist | `NotStarted`, `InProgress`, `Completed` |
 
 > **Important:** The `ProductId` field on `InventoryCntProdtBatchItem` must be explicitly set. Without it, the Inventory Count Assessment detail page shows an empty Details table even though child records exist.
@@ -148,6 +151,31 @@ The script creates an assessment with a mix of matches, shortages, and overages:
 | Immunexis GB 25mg Sample | 2000 | 2000 | Match |
 
 At the batch level, the discrepancy is applied to the **first batch** of each product (simulating a shortage or overage in a specific lot), while the second batch matches.
+
+### What the Rep Sees (Ad Hoc Assessment)
+
+When a rep creates an Ad Hoc assessment from the Sample Inventory Management page, this is the counting interface:
+
+![Ad Hoc Inventory Count Assessment — GB rep](images/inventory-count-adhoc-assessment-gb.png)
+
+The interface has three panels:
+
+| Panel | Description |
+|-------|-------------|
+| **Products** (left) | List of all products with batch numbers. Checkmarks indicate products the rep has finished counting |
+| **Details** (center) | The count table showing Opening Count, Quantity Received, Quantity Released, Total System Count, and editable Actual Stock Count and Discrepancy Reason fields |
+| **History** (right) | Transaction history for the selected batch — Transfer In, Transfer Out, Disbursement, Adjustment, Return events with quantities |
+
+Key observations from the Details table:
+
+- **Opening Count** — the quantity at the start of the count period (from the last completed assessment)
+- **Quantity Received** — units received via Transfer Orders since the last count
+- **Quantity Released** — units distributed (disbursements) since the last count
+- **Total System Count** — calculated: Opening Count + Received - Released. This is the expected quantity
+- **Actual Stock Count** — editable field where the rep enters their physical count
+- **Discrepancy Reason** — required when actual ≠ expected. Values: Damage, Theft, Expiry, Misplacement, Overcount, Undercount, Mismatch, Lost, Adjustment, Other
+
+The History panel provides an audit trail explaining *why* the system count is what it is — the rep can trace each Transfer In, Disbursement, and Adjustment to understand where units went.
 
 ### Script: Discrepancy Count
 
